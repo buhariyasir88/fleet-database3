@@ -1,0 +1,110 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f8f6f1;
+  color: #0a1628;
+}
+
+/* Premium Scrollbar - Gold theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e8e4dc;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c9a84c;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8943a;
+}
+
+/* Card Styles */
+.MuiPaper-root {
+  transition: all 0.2s ease-in-out !important;
+}
+
+.MuiPaper-root:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Table Styles */
+.MuiTableHead-root .MuiTableCell-root {
+  font-weight: 600;
+  color: #0a1628;
+  background-color: #f8f6f1;
+  border-bottom: 2px solid #e8e4dc;
+}
+
+.MuiTableBody-root .MuiTableCell-root {
+  border-bottom: 1px solid #f0ede8;
+  color: #0a1628;
+}
+
+.MuiTableRow-root:hover {
+  background-color: #f8f6f1 !important;
+}
+
+/* Button Styles */
+.MuiButton-contained {
+  text-transform: none;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.MuiButton-outlined {
+  text-transform: none;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+/* Dialog Styles */
+.MuiDialog-paper {
+  border-radius: 16px !important;
+}
+
+/* Chip Styles */
+.MuiChip-root {
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Gold accent for active states */
+.Mui-selected .MuiListItemIcon-root {
+  color: #c9a84c !important;
+}
+
+.Mui-selected .MuiListItemText-primary {
+  color: #ffffff !important;
+}
+
+/* Print styles */
+@media print {
+  .MuiDrawer-root {
+    display: none !important;
+  }
+  .MuiAppBar-root {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
