@@ -32,6 +32,10 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Collapse,
+  Tooltip,
+  Fade,
+  alpha,
+  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -43,6 +47,11 @@ import {
   ViewList as ViewListIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  Close as CloseIcon,
+  CalendarToday as CalendarIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS,
@@ -50,7 +59,7 @@ import {
   LinearScale,
   BarElement,
   Title,
-  Tooltip,
+  Tooltip as ChartTooltip,
   Legend,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
@@ -60,11 +69,11 @@ ChartJS.register(
   LinearScale,
   BarElement,
   Title,
-  Tooltip,
+  ChartTooltip,
   Legend
 );
 
-const API_URL = 'https://fleet-database-backend.onrender.com/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Utilization() {
   const [utilizations, setUtilizations] = useState([]);
@@ -121,26 +130,18 @@ function Utilization() {
 
   const handleOpenDialog = (util = null) => {
     if (util) {
-      setEditingUtilization(util);
-      setFormData({
-        vessel: util.vessel?._id || '',
-        month: util.month || '',
-        year: util.year || new Date().getFullYear(),
-        budgetDays: util.budgetDays || '',
-        actualDays: util.actualDays || '',
-        remarks: util.remarks || '',
-      });
-    } else {
-      setEditingUtilization(null);
-      setFormData({
-        vessel: '',
-        month: '',
-        year: new Date().getFullYear(),
-        budgetDays: '',
-        actualDays: '',
-        remarks: '',
-      });
+      showSnackbar('Editing is not allowed. Please add a new record instead.', 'info');
+      return;
     }
+    setEditingUtilization(null);
+    setFormData({
+      vessel: '',
+      month: '',
+      year: new Date().getFullYear(),
+      budgetDays: '',
+      actualDays: '',
+      remarks: '',
+    });
     setOpenDialog(true);
   };
 
@@ -163,6 +164,18 @@ function Utilization() {
         return;
       }
 
+      const existing = utilizations.find(u => 
+        u.vessel?._id === formData.vessel && 
+        u.month === formData.month && 
+        u.year === parseInt(formData.year)
+      );
+
+      if (existing) {
+        showSnackbar('A record for this vessel and month already exists.', 'warning');
+        setSaving(false);
+        return;
+      }
+
       const utilizationData = {
         vessel: formData.vessel,
         month: formData.month,
@@ -172,18 +185,13 @@ function Utilization() {
         remarks: formData.remarks || '',
       };
 
-      if (editingUtilization) {
-        await axios.put(`${API_URL}/utilizations/${editingUtilization._id}`, utilizationData);
-        showSnackbar('Utilization record updated successfully! 🎉');
-      } else {
-        await axios.post(`${API_URL}/utilizations`, utilizationData);
-        showSnackbar('Utilization record created successfully! 🎉');
-      }
+      await axios.post(`${API_URL}/utilizations`, utilizationData);
+      showSnackbar('Utilization record created successfully! 🎉');
       handleCloseDialog();
       fetchData();
     } catch (error) {
       console.error('Error saving utilization:', error);
-      showSnackbar(error.response?.data?.error || 'Error saving utilization. Make sure backend is running.', 'error');
+      showSnackbar(error.response?.data?.error || 'Error saving utilization.', 'error');
     } finally {
       setSaving(false);
     }
@@ -202,13 +210,11 @@ function Utilization() {
     }
   };
 
-  // Calculate utilization percentage
   const calculateUtilization = (budget, actual) => {
     if (budget === 0) return 0;
     return ((actual / budget) * 100);
   };
 
-  // Get unique vessels for filter
   const getUniqueVessels = () => {
     const vesselNames = new Set();
     utilizations.forEach(u => {
@@ -219,7 +225,6 @@ function Utilization() {
     return Array.from(vesselNames).sort();
   };
 
-  // Get unique months for filter
   const getUniqueMonths = () => {
     const monthSet = new Set();
     utilizations.forEach(u => {
@@ -235,7 +240,6 @@ function Utilization() {
     });
   };
 
-  // Filter utilizations
   const filteredUtilizations = utilizations.filter(u => {
     let matchVessel = true;
     let matchMonth = true;
@@ -254,7 +258,6 @@ function Utilization() {
     return matchVessel && matchMonth && matchYear;
   });
 
-  // Group by vessel for summary
   const groupedByVessel = filteredUtilizations.reduce((acc, u) => {
     const vesselName = u.vessel?.name || 'Unknown';
     if (!acc[vesselName]) {
@@ -265,7 +268,6 @@ function Utilization() {
     return acc;
   }, {});
 
-  // Group by month for trend
   const groupedByMonth = filteredUtilizations.reduce((acc, u) => {
     const monthKey = `${u.month} ${u.year}`;
     if (!acc[monthKey]) {
@@ -276,7 +278,6 @@ function Utilization() {
     return acc;
   }, {});
 
-  // Sort month keys by month order
   const sortedMonthKeys = Object.keys(groupedByMonth).sort((a, b) => {
     const [monthA, yearA] = a.split(' ');
     const [monthB, yearB] = b.split(' ');
@@ -284,14 +285,10 @@ function Utilization() {
     return months.indexOf(monthA) - months.indexOf(monthB);
   });
 
-  // Calculate totals
   const totalBudget = filteredUtilizations.reduce((sum, u) => sum + (u.budgetDays || 0), 0);
   const totalActual = filteredUtilizations.reduce((sum, u) => sum + (u.actualDays || 0), 0);
   const overallUtilization = totalBudget > 0 ? ((totalActual / totalBudget) * 100) : 0;
-  const totalVariance = totalActual - totalBudget;
-  const totalVariancePercent = totalBudget > 0 ? ((totalVariance / totalBudget) * 100) : 0;
 
-  // Get current month for MTD
   const currentMonth = new Date().toLocaleString('default', { month: 'long' });
   const currentYear = new Date().getFullYear();
   const mtdActual = filteredUtilizations
@@ -303,7 +300,6 @@ function Utilization() {
   const mtdVariance = mtdActual - mtdBudget;
   const mtdVariancePercent = mtdBudget > 0 ? ((mtdVariance / mtdBudget) * 100) : 0;
 
-  // Generate all 12 months for budget table
   const allMonthsData = months.map(month => {
     const monthKey = `${month} ${filterYear}`;
     const data = groupedByMonth[monthKey] || { budget: 0, actual: 0 };
@@ -314,14 +310,12 @@ function Utilization() {
     return { month, budget, actual, variance, variancePercent };
   });
 
-  // Calculate cumulative
   let cumulative = 0;
   const monthlyWithCumulative = allMonthsData.map(item => {
     cumulative += item.actual;
     return { ...item, cumulative };
   });
 
-  // Chart data - Monthly Utilization Trend
   const monthlyChartData = {
     labels: sortedMonthKeys,
     datasets: [
@@ -350,26 +344,25 @@ function Utilization() {
     plugins: {
       legend: {
         position: 'top',
-        labels: { font: { size: 12, weight: '600' }, usePointStyle: true, pointStyle: 'circle', padding: 20 },
+        labels: { font: { size: 11, weight: '600' }, usePointStyle: true, pointStyle: 'circle', padding: 15 },
       },
       title: {
         display: true,
         text: 'Monthly Utilization Trend',
-        font: { size: 16, weight: '700' },
-        padding: { bottom: 20 },
+        font: { size: 15, weight: '700' },
+        padding: { bottom: 15 },
       },
     },
     scales: {
       y: {
         beginAtZero: true,
         grid: { color: 'rgba(0,0,0,0.05)' },
-        title: { display: true, text: 'Days', font: { size: 12, weight: '600' } },
+        title: { display: true, text: 'Days', font: { size: 11, weight: '600' } },
       },
       x: { grid: { display: false } },
     },
   };
 
-  // Chart data - Vessel Utilization Summary
   const vesselChartData = {
     labels: Object.keys(groupedByVessel),
     datasets: [
@@ -398,20 +391,20 @@ function Utilization() {
     plugins: {
       legend: {
         position: 'top',
-        labels: { font: { size: 12, weight: '600' }, usePointStyle: true, pointStyle: 'circle', padding: 20 },
+        labels: { font: { size: 11, weight: '600' }, usePointStyle: true, pointStyle: 'circle', padding: 15 },
       },
       title: {
         display: true,
         text: 'Vessel Utilization Summary',
-        font: { size: 16, weight: '700' },
-        padding: { bottom: 20 },
+        font: { size: 15, weight: '700' },
+        padding: { bottom: 15 },
       },
     },
     scales: {
       y: {
         beginAtZero: true,
         grid: { color: 'rgba(0,0,0,0.05)' },
-        title: { display: true, text: 'Days', font: { size: 12, weight: '600' } },
+        title: { display: true, text: 'Days', font: { size: 11, weight: '600' } },
       },
       x: { grid: { display: false } },
     },
@@ -425,94 +418,416 @@ function Utilization() {
   }
 
   return (
-    <Box>
+    <Box sx={{ fontFamily: '"Inter", sans-serif' }}>
       {/* Page Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0a1929', mb: 0.5 }}>
-          Vessel Utilization
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          Monitor vessel utilization performance against budget
-        </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 700, 
+              color: '#111827', 
+              mb: 0.5,
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
+            Utilization
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
+            Monitor vessel utilization performance against budget
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+          sx={{ 
+            borderRadius: 2, 
+            textTransform: 'none',
+            px: 4,
+            py: 1.2,
+            fontWeight: 600,
+            fontFamily: '"Inter", sans-serif',
+            background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+            }
+          }}
+        >
+          Add Utilization
+        </Button>
       </Box>
 
-      {/* Summary Cards */}
+      {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Total Vessels
-              </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0a1929' }}>
-                {Object.keys(groupedByVessel).length}
-              </Typography>
-            </CardContent>
-          </Card>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f0f2f5',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              '&:hover': {
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                borderColor: 'transparent',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: 'rgba(25, 118, 210, 0.1)',
+                  color: '#1976d2',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                }}
+              >
+                <UtilizationIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Total Vessels
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 700,
+                    color: '#111827',
+                    lineHeight: 1.2,
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {Object.keys(groupedByVessel).length}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #2196f3' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Total Budget Days
-              </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
-                {totalBudget.toFixed(1)}d
-              </Typography>
-            </CardContent>
-          </Card>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f0f2f5',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              '&:hover': {
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                borderColor: 'transparent',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: 'rgba(46, 125, 50, 0.1)',
+                  color: '#2e7d32',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                }}
+              >
+                <CalendarIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Total Budget Days
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 700,
+                    color: '#2e7d32',
+                    lineHeight: 1.2,
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {totalBudget.toFixed(1)}d
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #4caf50' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Total Actual Days
-              </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
-                {totalActual.toFixed(1)}d
-              </Typography>
-            </CardContent>
-          </Card>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f0f2f5',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              '&:hover': {
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                borderColor: 'transparent',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: 'rgba(230, 81, 0, 0.1)',
+                  color: '#e65100',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                }}
+              >
+                <TrendingUpIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Total Actual Days
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 700,
+                    color: '#e65100',
+                    lineHeight: 1.2,
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {totalActual.toFixed(1)}d
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
         </Grid>
+
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: `4px solid ${overallUtilization >= 80 ? '#4caf50' : overallUtilization >= 60 ? '#ff9800' : '#f44336'}` }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Overall Utilization
-              </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: overallUtilization >= 80 ? '#4caf50' : overallUtilization >= 60 ? '#ff9800' : '#f44336' }}>
-                {overallUtilization.toFixed(1)}%
-              </Typography>
-            </CardContent>
-          </Card>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f0f2f5',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              '&:hover': {
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                borderColor: 'transparent',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: overallUtilization >= 80 ? 'rgba(46, 125, 50, 0.1)' : overallUtilization >= 60 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                  color: overallUtilization >= 80 ? '#2e7d32' : overallUtilization >= 60 ? '#ed6c02' : '#d32f2f',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                }}
+              >
+                <UtilizationIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Overall Utilization
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 700,
+                    color: overallUtilization >= 80 ? '#2e7d32' : overallUtilization >= 60 ? '#ed6c02' : '#d32f2f',
+                    lineHeight: 1.2,
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {overallUtilization.toFixed(1)}%
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
 
       {/* MTD Summary */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', bgcolor: '#f8f9fc' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0a1929' }}>
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: 3,
+          border: '1px solid #f0f2f5',
+          p: 3,
+          mb: 3,
+          bgcolor: '#F9FAFB',
+        }}
+      >
+        <Typography 
+          variant="subtitle2" 
+          sx={{ 
+            fontWeight: 600, 
+            color: '#111827', 
+            mb: 1.5,
+            fontFamily: '"Inter", sans-serif',
+          }}
+        >
+          <CalendarIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 1 }} />
           MTD (Month-to-Date): {currentMonth} {currentYear}
         </Typography>
-        <Grid container spacing={2} sx={{ mt: 0.5 }}>
+        <Grid container spacing={3}>
           <Grid item xs={4}>
-            <Typography variant="caption" color="textSecondary">Actual Days</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>{mtdActual.toFixed(1)}d</Typography>
-          </Grid>
-          <Grid item xs={4}>
-            <Typography variant="caption" color="textSecondary">Budget</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>{mtdBudget.toFixed(1)}d</Typography>
-          </Grid>
-          <Grid item xs={4}>
-            <Typography variant="caption" color="textSecondary">Variance</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: mtdVariance >= 0 ? '#4caf50' : '#f44336' }}>
-              {mtdVariance >= 0 ? '+' : ''}{mtdVariance.toFixed(1)}d ({mtdVariancePercent.toFixed(1)}%)
+            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Actual Days</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>
+              {mtdActual.toFixed(1)}d
             </Typography>
+          </Grid>
+          <Grid item xs={4}>
+            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Budget</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>
+              {mtdBudget.toFixed(1)}d
+            </Typography>
+          </Grid>
+          <Grid item xs={4}>
+            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Variance</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: mtdVariance >= 0 ? '#2e7d32' : '#d32f2f', fontFamily: '"Inter", sans-serif' }}>
+                {mtdVariance >= 0 ? '+' : ''}{mtdVariance.toFixed(1)}d
+              </Typography>
+              <Chip
+                label={`${mtdVariancePercent.toFixed(1)}%`}
+                size="small"
+                color={mtdVariancePercent >= 0 ? 'success' : 'error'}
+                sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif' }}
+              />
+            </Box>
           </Grid>
         </Grid>
       </Paper>
 
-      {/* Collapsible Monthly Budget vs Actual Comparison */}
-      <Paper sx={{ mb: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+      {/* Charts Section */}
+      <Box sx={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr',
+        gap: 3,
+        mb: 4,
+        '@media (max-width: 900px)': {
+          gridTemplateColumns: '1fr',
+        }
+      }}>
+        {Object.keys(groupedByMonth).length > 0 && (
+          <Paper sx={{ 
+            p: 3, 
+            borderRadius: 3, 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            height: 380,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                fontWeight: 600, 
+                textAlign: 'center', 
+                mb: 1, 
+                fontFamily: '"Inter", sans-serif',
+                color: '#111827',
+              }}
+            >
+              Monthly Utilization Trend
+            </Typography>
+            <Box sx={{ flex: 1, minHeight: 300, width: '100%' }}>
+              <Bar data={monthlyChartData} options={monthlyChartOptions} />
+            </Box>
+          </Paper>
+        )}
+        {Object.keys(groupedByVessel).length > 0 && (
+          <Paper sx={{ 
+            p: 3, 
+            borderRadius: 3, 
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            height: 380,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                fontWeight: 600, 
+                textAlign: 'center', 
+                mb: 1, 
+                fontFamily: '"Inter", sans-serif',
+                color: '#111827',
+              }}
+            >
+              Vessel Utilization Summary
+            </Typography>
+            <Box sx={{ flex: 1, minHeight: 300, width: '100%' }}>
+              <Bar data={vesselChartData} options={vesselChartOptions} />
+            </Box>
+          </Paper>
+        )}
+      </Box>
+
+      {/* Budget Table - View Only */}
+      <Paper sx={{ mb: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', overflow: 'hidden', border: '1px solid #f0f2f5' }}>
         <Box 
           sx={{ 
             p: 2, 
@@ -520,19 +835,21 @@ function Utilization() {
             justifyContent: 'space-between', 
             alignItems: 'center',
             cursor: 'pointer',
-            bgcolor: '#f5f5f5',
-            '&:hover': { bgcolor: '#e8e8e8' },
+            bgcolor: '#F9FAFB',
+            borderBottom: budgetTableOpen ? '1px solid #E5E7EB' : 'none',
+            '&:hover': { bgcolor: '#F3F4F6' },
           }}
           onClick={() => setBudgetTableOpen(!budgetTableOpen)}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', fontFamily: '"Inter", sans-serif' }}>
               Monthly Budget vs Actual Comparison - {filterYear}
             </Typography>
             <Chip 
               label={`${allMonthsData.filter(m => m.budget > 0 || m.actual > 0).length} months active`} 
               size="small" 
               color="primary" 
+              sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}
             />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -540,6 +857,7 @@ function Utilization() {
               <Select
                 value={filterYear}
                 onChange={(e) => setFilterYear(e.target.value)}
+                sx={{ borderRadius: 2, bgcolor: 'white', fontFamily: '"Inter", sans-serif' }}
               >
                 {[2024, 2025, 2026, 2027, 2028].map(y => (
                   <MenuItem key={y} value={y}>{y}</MenuItem>
@@ -554,110 +872,55 @@ function Utilization() {
         
         <Collapse in={budgetTableOpen}>
           <Box sx={{ p: 2 }}>
-            <TableContainer>
-              <Table size="small">
+            <TableContainer sx={{ borderRadius: 2, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+              <Table size="small" sx={{ borderCollapse: 'collapse' }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#f8f9fc' }}>
-                    <TableCell sx={{ fontWeight: 600 }}>Month</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Budget Days</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Actual Days</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Variance (d)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Variance (%)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Cumulative Days</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                    <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Month</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Budget Days</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actual Days</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Variance (d)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Variance (%)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Cumulative Days</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {monthlyWithCumulative.map((item) => {
+                  {monthlyWithCumulative.map((item, index) => {
                     const isCurrentMonth = item.month === currentMonth && filterYear === currentYear;
                     return (
-                      <TableRow key={item.month} hover sx={isCurrentMonth ? { bgcolor: 'rgba(25, 118, 210, 0.05)' } : {}}>
-                        <TableCell>
+                      <TableRow 
+                        key={item.month} 
+                        hover
+                        sx={{ 
+                          '&:hover': { bgcolor: '#F9FAFB' },
+                          transition: 'background-color 0.2s',
+                          borderBottom: index < monthlyWithCumulative.length - 1 ? '1px solid #F3F4F6' : 'none',
+                          bgcolor: isCurrentMonth ? 'rgba(25, 118, 210, 0.04)' : 'transparent',
+                        }}
+                      >
+                        <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', fontWeight: 500, color: '#111827', fontSize: '0.8rem' }}>
                           {item.month}
-                          {isCurrentMonth && <Chip label="MTD" size="small" color="info" sx={{ ml: 1 }} />}
+                          {isCurrentMonth && <Chip label="MTD" size="small" color="info" sx={{ ml: 1, fontFamily: '"Inter", sans-serif' }} />}
                         </TableCell>
-                        <TableCell align="right">
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={item.budget}
-                            onChange={(e) => {
-                              // Find the utilization record for this month and update budget
-                              const existing = utilizations.find(u => u.month === item.month && u.year === filterYear);
-                              if (existing) {
-                                const updated = { ...existing, budgetDays: parseFloat(e.target.value) || 0 };
-                                // Update locally
-                                const updatedUtilizations = utilizations.map(u => 
-                                  u._id === existing._id ? updated : u
-                                );
-                                setUtilizations(updatedUtilizations);
-                              } else {
-                                // Create a new record
-                                const newRecord = {
-                                  vessel: vessels[0]?._id || '',
-                                  month: item.month,
-                                  year: filterYear,
-                                  budgetDays: parseFloat(e.target.value) || 0,
-                                  actualDays: 0,
-                                  remarks: ''
-                                };
-                                setUtilizations([...utilizations, newRecord]);
-                              }
-                            }}
-                            sx={{ width: 100 }}
-                            inputProps={{ min: 0, step: 0.5 }}
-                            placeholder="Enter budget"
-                          />
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
+                          {item.budget.toFixed(1)}d
                         </TableCell>
-                        <TableCell align="right">{item.actual.toFixed(1)}d</TableCell>
-                        <TableCell align="right" style={{ color: item.variance >= 0 ? '#4caf50' : '#f44336' }}>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
+                          {item.actual.toFixed(1)}d
+                        </TableCell>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: item.variance >= 0 ? '#2e7d32' : '#d32f2f', fontSize: '0.8rem', fontWeight: 500 }}>
                           {item.variance >= 0 ? '+' : ''}{item.variance.toFixed(1)}d
                         </TableCell>
-                        <TableCell align="right">
+                        <TableCell align="right" sx={{ py: 2, border: 'none' }}>
                           <Chip
                             label={`${item.variancePercent.toFixed(1)}%`}
                             color={item.variancePercent >= 0 ? 'success' : 'error'}
                             size="small"
+                            sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}
                           />
                         </TableCell>
-                        <TableCell align="right">{item.cumulative.toFixed(1)}d</TableCell>
-                        <TableCell align="center">
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="primary"
-                            onClick={async () => {
-                              try {
-                                const existing = utilizations.find(u => u.month === item.month && u.year === filterYear);
-                                if (existing) {
-                                  await axios.put(`${API_URL}/utilizations/${existing._id}`, existing);
-                                  showSnackbar('Budget saved successfully! 🎉');
-                                } else {
-                                  // Find the vessel for this record
-                                  const vesselId = vessels[0]?._id || '';
-                                  const newData = {
-                                    vessel: vesselId,
-                                    month: item.month,
-                                    year: filterYear,
-                                    budgetDays: item.budget || 0,
-                                    actualDays: 0,
-                                    remarks: ''
-                                  };
-                                  await axios.post(`${API_URL}/utilizations`, newData);
-                                  showSnackbar('Budget created successfully! 🎉');
-                                }
-                                fetchData();
-                              } catch (error) {
-                                console.error('Error saving budget:', error);
-                                showSnackbar('Error saving budget', 'error');
-                              }
-                            }}
-                            disabled={item.budget === 0}
-                            startIcon={<SaveIcon />}
-                            sx={{ textTransform: 'none' }}
-                          >
-                            Save Budget
-                          </Button>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#111827', fontSize: '0.8rem', fontWeight: 500 }}>
+                          {item.cumulative.toFixed(1)}d
                         </TableCell>
                       </TableRow>
                     );
@@ -669,34 +932,23 @@ function Utilization() {
         </Collapse>
       </Paper>
 
-      {/* Charts Section */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {Object.keys(groupedByMonth).length > 0 && (
-          <Grid item xs={12} md={7}>
-            <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', height: 380 }}>
-              <Bar data={monthlyChartData} options={monthlyChartOptions} />
-            </Paper>
-          </Grid>
-        )}
-        {Object.keys(groupedByVessel).length > 0 && (
-          <Grid item xs={12} md={5}>
-            <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', height: 380 }}>
-              <Bar data={vesselChartData} options={vesselChartOptions} />
-            </Paper>
-          </Grid>
-        )}
-      </Grid>
-
-      {/* Filter Bar */}
+      {/* ============ FILTER BAR WITH ALL, MONTH, AND VESSEL ============ */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Month Filter Dropdown */}
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Month</InputLabel>
+            <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Filter by Month</InputLabel>
             <Select
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
-              label="Month"
-              sx={{ borderRadius: 2 }}
+              label="Filter by Month"
+              sx={{ 
+                borderRadius: 2,
+                bgcolor: '#F9FAFB',
+                fontFamily: '"Inter", sans-serif',
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover': { bgcolor: '#F3F4F6' },
+              }}
             >
               <MenuItem value="">All Months</MenuItem>
               {uniqueMonths.map((month) => (
@@ -705,13 +957,20 @@ function Utilization() {
             </Select>
           </FormControl>
 
+          {/* Vessel Filter Dropdown */}
           <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Vessel</InputLabel>
+            <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Filter by Vessel</InputLabel>
             <Select
               value={filterVessel}
               onChange={(e) => setFilterVessel(e.target.value)}
-              label="Vessel"
-              sx={{ borderRadius: 2 }}
+              label="Filter by Vessel"
+              sx={{ 
+                borderRadius: 2,
+                bgcolor: '#F9FAFB',
+                fontFamily: '"Inter", sans-serif',
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover': { bgcolor: '#F3F4F6' },
+              }}
             >
               <MenuItem value="">All Vessels</MenuItem>
               {uniqueVessels.map((vessel) => (
@@ -725,79 +984,81 @@ function Utilization() {
               size="small" 
               variant="outlined" 
               onClick={() => { setFilterMonth(''); setFilterVessel(''); }}
-              sx={{ borderRadius: 2, textTransform: 'none' }}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none',
+                fontFamily: '"Inter", sans-serif',
+                borderColor: '#E5E7EB',
+                color: '#6B7280',
+                '&:hover': { borderColor: '#1976d2', color: '#1976d2' }
+              }}
             >
               Clear Filters
             </Button>
           )}
 
+          {/* ============ GROUP BY BUTTONS - ALL, MONTH, VESSEL ============ */}
           <ToggleButtonGroup
             value={groupBy}
             exclusive
             onChange={(e, val) => setGroupBy(val || 'none')}
             size="small"
           >
-            <ToggleButton value="none">
+            <ToggleButton value="none" sx={{ borderRadius: 2, fontFamily: '"Inter", sans-serif' }}>
               <ViewListIcon /> All
             </ToggleButton>
-            <ToggleButton value="vessel">
+            <ToggleButton value="month" sx={{ borderRadius: 2, fontFamily: '"Inter", sans-serif' }}>
+              <GroupByIcon /> Month
+            </ToggleButton>
+            <ToggleButton value="vessel" sx={{ borderRadius: 2, fontFamily: '"Inter", sans-serif' }}>
               <GroupByIcon /> Vessel
             </ToggleButton>
           </ToggleButtonGroup>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ 
-            borderRadius: 2, 
-            textTransform: 'none',
-            px: 4,
-            py: 1.2,
-            fontWeight: 600,
-            background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
-            '&:hover': {
-              background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
-            }
-          }}
-        >
-          Add Utilization Record
-        </Button>
       </Box>
 
-      {/* Render based on grouping */}
+      {/* Main Table */}
       {groupBy === 'vessel' ? (
         <Box>
           {Object.keys(groupedByVessel).sort().map(vesselName => {
             const vesselData = groupedByVessel[vesselName];
             const utilization = calculateUtilization(vesselData.budget, vesselData.actual);
-            const variance = vesselData.actual - vesselData.budget;
-            const variancePercent = vesselData.budget > 0 ? ((variance / vesselData.budget) * 100) : 0;
             
             return (
               <Box key={vesselName} sx={{ mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929', mb: 1 }}>
-                  {vesselName}
-                  <Chip 
-                    label={`${utilization.toFixed(1)}%`}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Chip
+                    label={`${vesselName} - ${utilization.toFixed(1)}%`}
                     color={utilization >= 80 ? 'success' : utilization >= 60 ? 'warning' : 'error'}
-                    size="small"
-                    sx={{ ml: 2 }}
+                    sx={{ 
+                      fontWeight: 600,
+                      fontFamily: '"Inter", sans-serif',
+                      borderRadius: 1,
+                      py: 1,
+                    }}
                   />
-                </Typography>
-                <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                  <Table size="small">
+                </Box>
+
+                <TableContainer 
+                  component={Paper} 
+                  sx={{ 
+                    borderRadius: 3, 
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                    overflow: 'hidden',
+                    border: 'none',
+                  }}
+                >
+                  <Table sx={{ borderCollapse: 'collapse' }}>
                     <TableHead>
-                      <TableRow sx={{ bgcolor: '#f8f9fc' }}>
-                        <TableCell sx={{ fontWeight: 600 }}>Month</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Year</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Budget Days</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Actual Days</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Utilization</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Variance (Days)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Variance (%)</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Remarks</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                      <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Month</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Year</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Budget Days</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actual Days</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Utilization</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Variance</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Remarks</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -808,37 +1069,143 @@ function Utilization() {
                           if (monthOrder !== 0) return monthOrder;
                           return a.year - b.year;
                         })
-                        .map((u) => {
+                        .map((u, index) => {
                           const util = calculateUtilization(u.budgetDays, u.actualDays);
                           const variance = u.actualDays - u.budgetDays;
-                          const variancePercent = u.budgetDays > 0 ? ((variance / u.budgetDays) * 100) : 0;
                           return (
-                            <TableRow key={u._id} hover>
-                              <TableCell>{u.month}</TableCell>
-                              <TableCell>{u.year}</TableCell>
-                              <TableCell align="right">{u.budgetDays.toFixed(1)}d</TableCell>
-                              <TableCell align="right">{u.actualDays.toFixed(1)}d</TableCell>
-                              <TableCell align="right">
+                            <TableRow 
+                              key={u._id} 
+                              hover
+                              sx={{ 
+                                '&:hover': { bgcolor: '#F9FAFB' },
+                                transition: 'background-color 0.2s',
+                                borderBottom: index < filteredUtilizations.filter(u => u.vessel?.name === vesselName).length - 1 ? '1px solid #F3F4F6' : 'none',
+                              }}
+                            >
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.month}</TableCell>
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.year}</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.budgetDays.toFixed(1)}d</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.actualDays.toFixed(1)}d</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none' }}>
                                 <Chip 
                                   label={`${util.toFixed(1)}%`}
                                   color={util >= 80 ? 'success' : util >= 60 ? 'warning' : 'error'}
                                   size="small"
+                                  sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}
                                 />
                               </TableCell>
-                              <TableCell align="right" style={{ color: variance >= 0 ? '#4caf50' : '#f44336' }}>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: variance >= 0 ? '#2e7d32' : '#d32f2f', fontSize: '0.8rem', fontWeight: 500 }}>
                                 {variance >= 0 ? '+' : ''}{variance.toFixed(1)}d
                               </TableCell>
-                              <TableCell align="right" style={{ color: variancePercent >= 0 ? '#4caf50' : '#f44336' }}>
-                                {variancePercent >= 0 ? '+' : ''}{variancePercent.toFixed(1)}%
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
+                              <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                                  <Tooltip title="Delete">
+                                    <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
+                                      <DeleteIcon sx={{ fontSize: 18 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
                               </TableCell>
-                              <TableCell>{u.remarks || '-'}</TableCell>
-                              <TableCell>
-                                <IconButton size="small" onClick={() => handleOpenDialog(u)} color="primary">
-                                  <EditIcon />
-                                </IconButton>
-                                <IconButton size="small" onClick={() => handleDelete(u._id)} color="error">
-                                  <DeleteIcon />
-                                </IconButton>
+                            </TableRow>
+                          );
+                        })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : groupBy === 'month' ? (
+        <Box>
+          {Object.keys(groupedByMonth).sort().map(monthKey => {
+            const monthData = groupedByMonth[monthKey];
+            const utilization = calculateUtilization(monthData.budget, monthData.actual);
+            
+            return (
+              <Box key={monthKey} sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Chip
+                    label={`${monthKey} - ${utilization.toFixed(1)}%`}
+                    color={utilization >= 80 ? 'success' : utilization >= 60 ? 'warning' : 'error'}
+                    sx={{ 
+                      fontWeight: 600,
+                      fontFamily: '"Inter", sans-serif',
+                      borderRadius: 1,
+                      py: 1,
+                    }}
+                  />
+                </Box>
+
+                <TableContainer 
+                  component={Paper} 
+                  sx={{ 
+                    borderRadius: 3, 
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                    overflow: 'hidden',
+                    border: 'none',
+                  }}
+                >
+                  <Table sx={{ borderCollapse: 'collapse' }}>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Vessel</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Year</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Budget Days</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actual Days</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Utilization</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Variance</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Remarks</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredUtilizations
+                        .filter(u => `${u.month} ${u.year}` === monthKey)
+                        .sort((a, b) => {
+                          const vesselA = a.vessel?.name || 'Unknown';
+                          const vesselB = b.vessel?.name || 'Unknown';
+                          return vesselA.localeCompare(vesselB);
+                        })
+                        .map((u, index) => {
+                          const util = calculateUtilization(u.budgetDays, u.actualDays);
+                          const variance = u.actualDays - u.budgetDays;
+                          const monthRecords = filteredUtilizations.filter(u => `${u.month} ${u.year}` === monthKey);
+                          return (
+                            <TableRow 
+                              key={u._id} 
+                              hover
+                              sx={{ 
+                                '&:hover': { bgcolor: '#F9FAFB' },
+                                transition: 'background-color 0.2s',
+                                borderBottom: index < monthRecords.length - 1 ? '1px solid #F3F4F6' : 'none',
+                              }}
+                            >
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.vessel?.name || 'Unknown'}</TableCell>
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.year}</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.budgetDays.toFixed(1)}d</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.actualDays.toFixed(1)}d</TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none' }}>
+                                <Chip 
+                                  label={`${util.toFixed(1)}%`}
+                                  color={util >= 80 ? 'success' : util >= 60 ? 'warning' : 'error'}
+                                  size="small"
+                                  sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}
+                                />
+                              </TableCell>
+                              <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: variance >= 0 ? '#2e7d32' : '#d32f2f', fontSize: '0.8rem', fontWeight: 500 }}>
+                                {variance >= 0 ? '+' : ''}{variance.toFixed(1)}d
+                              </TableCell>
+                              <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
+                              <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                                  <Tooltip title="Delete">
+                                    <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
+                                      <DeleteIcon sx={{ fontSize: 18 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
                               </TableCell>
                             </TableRow>
                           );
@@ -851,33 +1218,39 @@ function Utilization() {
           })}
         </Box>
       ) : (
-        // Default Table View
-        <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-          <Table>
+        <TableContainer 
+          component={Paper} 
+          sx={{ 
+            borderRadius: 3, 
+            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+            overflow: 'hidden',
+            border: 'none',
+          }}
+        >
+          <Table sx={{ borderCollapse: 'collapse' }}>
             <TableHead>
-              <TableRow sx={{ bgcolor: '#f8f9fc' }}>
-                <TableCell sx={{ fontWeight: 600 }}>VESSEL</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>MONTH</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>YEAR</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>BUDGET DAYS</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>ACTUAL DAYS</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>UTILIZATION</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>VARIANCE (DAYS)</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>VARIANCE (%)</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>REMARKS</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>ACTIONS</TableCell>
+              <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Vessel</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Month</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Year</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Budget Days</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actual Days</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Utilization</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Variance</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Remarks</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredUtilizations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                     <UtilizationIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
-                    <Typography color="textSecondary" variant="h6" sx={{ fontWeight: 500 }}>
+                    <Typography color="textSecondary" variant="h6" sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}>
                       No utilization records found
                     </Typography>
-                    <Typography color="textSecondary" variant="body2">
-                      Click "Add Utilization Record" to get started
+                    <Typography color="textSecondary" variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
+                      Click "Add Utilization" to get started
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -888,45 +1261,51 @@ function Utilization() {
                     if (monthOrder !== 0) return monthOrder;
                     return a.year - b.year;
                   })
-                  .map((u) => {
+                  .map((u, index) => {
                     const util = calculateUtilization(u.budgetDays, u.actualDays);
                     const variance = u.actualDays - u.budgetDays;
-                    const variancePercent = u.budgetDays > 0 ? ((variance / u.budgetDays) * 100) : 0;
                     return (
-                      <TableRow key={u._id} hover>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Avatar sx={{ width: 28, height: 28, bgcolor: '#1976d2' }}>
-                              <UtilizationIcon sx={{ fontSize: 14, color: 'white' }} />
+                      <TableRow 
+                        key={u._id} 
+                        hover
+                        sx={{ 
+                          '&:hover': { bgcolor: '#F9FAFB' },
+                          transition: 'background-color 0.2s',
+                          borderBottom: index < filteredUtilizations.length - 1 ? '1px solid #F3F4F6' : 'none',
+                        }}
+                      >
+                        <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', fontWeight: 500, color: '#111827', fontSize: '0.8rem' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar sx={{ width: 24, height: 24, bgcolor: '#1976d2', borderRadius: 1.5 }}>
+                              <UtilizationIcon sx={{ fontSize: 12, color: 'white' }} />
                             </Avatar>
                             {u.vessel?.name || 'N/A'}
                           </Box>
                         </TableCell>
-                        <TableCell>{u.month}</TableCell>
-                        <TableCell>{u.year}</TableCell>
-                        <TableCell align="right">{u.budgetDays.toFixed(1)}d</TableCell>
-                        <TableCell align="right">{u.actualDays.toFixed(1)}d</TableCell>
-                        <TableCell align="right">
+                        <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.month}</TableCell>
+                        <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.year}</TableCell>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.budgetDays.toFixed(1)}d</TableCell>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.actualDays.toFixed(1)}d</TableCell>
+                        <TableCell align="right" sx={{ py: 2, border: 'none' }}>
                           <Chip 
                             label={`${util.toFixed(1)}%`}
                             color={util >= 80 ? 'success' : util >= 60 ? 'warning' : 'error'}
                             size="small"
+                            sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}
                           />
                         </TableCell>
-                        <TableCell align="right" style={{ color: variance >= 0 ? '#4caf50' : '#f44336' }}>
+                        <TableCell align="right" sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: variance >= 0 ? '#2e7d32' : '#d32f2f', fontSize: '0.8rem', fontWeight: 500 }}>
                           {variance >= 0 ? '+' : ''}{variance.toFixed(1)}d
                         </TableCell>
-                        <TableCell align="right" style={{ color: variancePercent >= 0 ? '#4caf50' : '#f44336' }}>
-                          {variancePercent >= 0 ? '+' : ''}{variancePercent.toFixed(1)}%
-                        </TableCell>
-                        <TableCell>{u.remarks || '-'}</TableCell>
-                        <TableCell>
-                          <IconButton size="small" onClick={() => handleOpenDialog(u)} color="primary">
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton size="small" onClick={() => handleDelete(u._id)} color="error">
-                            <DeleteIcon />
-                          </IconButton>
+                        <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
+                        <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                            <Tooltip title="Delete">
+                              <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
+                                <DeleteIcon sx={{ fontSize: 18 }} />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     );
@@ -937,40 +1316,93 @@ function Utilization() {
         </TableContainer>
       )}
 
-      {/* Standardized Dialog */}
+      {/* Dialog */}
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog} 
         maxWidth="sm" 
         fullWidth
+        TransitionComponent={Fade}
+        TransitionProps={{ timeout: 300 }}
         PaperProps={{
           sx: {
-            borderRadius: 2,
+            borderRadius: '16px',
             padding: 0,
             overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+            border: '1px solid #E5E7EB',
           }
         }}
       >
-        <DialogTitle sx={{ 
+        <Box sx={{ 
           display: 'flex',
           alignItems: 'center',
-          gap: 1.5,
+          justifyContent: 'space-between',
           p: 3,
-          pb: 1,
-          bgcolor: '#f8f9fc',
-          borderBottom: '1px solid #e8ecf1',
+          pb: 1.5,
+          bgcolor: '#F9FAFB',
+          borderBottom: '1px solid #E5E7EB',
         }}>
-          <UtilizationIcon sx={{ color: '#1976d2', fontSize: 28 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929' }}>
-            {editingUtilization ? 'Edit Utilization Record' : 'Add Utilization Record'}
-          </Typography>
-        </DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ 
+              bgcolor: '#1976d2', 
+              width: 40, 
+              height: 40, 
+              borderRadius: '12px',
+            }}>
+              <UtilizationIcon sx={{ color: 'white', fontSize: 22 }} />
+            </Avatar>
+            <Box>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#111827', 
+                  lineHeight: 1.2,
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                Add Utilization
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: '#6B7280',
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                Enter utilization details below
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton 
+            onClick={handleCloseDialog} 
+            sx={{ 
+              color: '#6B7280',
+              '&:hover': { bgcolor: alpha('#6B7280', 0.08) }
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
 
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: 2.5 }}>
           <Grid container spacing={2.5}>
-            <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Vessel *
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Vessel <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <FormControl fullWidth size="small">
                 <Select
@@ -978,7 +1410,23 @@ function Utilization() {
                   value={formData.vessel}
                   onChange={handleInputChange}
                   displayEmpty
-                  sx={{ borderRadius: 2 }}
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                    },
+                    '& .MuiSelect-select': {
+                      fontFamily: '"Inter", sans-serif',
+                      color: '#111827',
+                      fontSize: '0.875rem',
+                      py: 1.5,
+                    },
+                  }}
                 >
                   <MenuItem value="">Select Vessel</MenuItem>
                   {vessels.map((vessel) => (
@@ -989,8 +1437,20 @@ function Utilization() {
             </Grid>
 
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Month *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Month <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <FormControl fullWidth size="small">
                 <Select
@@ -998,7 +1458,23 @@ function Utilization() {
                   value={formData.month}
                   onChange={handleInputChange}
                   displayEmpty
-                  sx={{ borderRadius: 2 }}
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                    },
+                    '& .MuiSelect-select': {
+                      fontFamily: '"Inter", sans-serif',
+                      color: '#111827',
+                      fontSize: '0.875rem',
+                      py: 1.5,
+                    },
+                  }}
                 >
                   <MenuItem value="">Select Month</MenuItem>
                   {months.map((month) => (
@@ -1009,8 +1485,20 @@ function Utilization() {
             </Grid>
 
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Year *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Year <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <TextField
                 fullWidth
@@ -1020,29 +1508,43 @@ function Utilization() {
                 onChange={handleInputChange}
                 variant="outlined"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Remarks
-              </Typography>
-              <TextField
-                fullWidth
-                name="remarks"
-                value={formData.remarks}
-                onChange={handleInputChange}
-                variant="outlined"
-                placeholder="Why vessel not available?"
-                size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-            </Grid>
-
-            <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Budget Days *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Budget Days <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <TextField
                 fullWidth
@@ -1054,13 +1556,43 @@ function Utilization() {
                 placeholder="e.g., 30"
                 size="small"
                 inputProps={{ step: 0.5 }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Actual Days *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Actual Days <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <TextField
                 fullWidth
@@ -1072,25 +1604,92 @@ function Utilization() {
                 placeholder="e.g., 25"
                 size="small"
                 inputProps={{ step: 0.5 }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
             <Grid item xs={12}>
-              <Paper sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Remarks
+              </Typography>
+              <TextField
+                fullWidth
+                name="remarks"
+                value={formData.remarks}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="Why vessel not available?"
+                size="small"
+                multiline
+                rows={2}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2 }}>
                 <Grid container spacing={2}>
                   <Grid item xs={4}>
-                    <Typography variant="caption" color="textSecondary">Utilization</Typography>
+                    <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Utilization</Typography>
                     <Typography variant="h6" sx={{ 
-                      fontWeight: 600,
+                      fontWeight: 700,
                       color: calculateUtilization(
                         parseFloat(formData.budgetDays) || 0,
                         parseFloat(formData.actualDays) || 0
-                      ) >= 80 ? '#4caf50' : 
+                      ) >= 80 ? '#2e7d32' : 
                       calculateUtilization(
                         parseFloat(formData.budgetDays) || 0,
                         parseFloat(formData.actualDays) || 0
-                      ) >= 60 ? '#ff9800' : '#f44336'
+                      ) >= 60 ? '#ed6c02' : '#d32f2f',
+                      fontFamily: '"Inter", sans-serif',
                     }}>
                       {calculateUtilization(
                         parseFloat(formData.budgetDays) || 0,
@@ -1099,20 +1698,22 @@ function Utilization() {
                     </Typography>
                   </Grid>
                   <Grid item xs={4}>
-                    <Typography variant="caption" color="textSecondary">Variance (Days)</Typography>
+                    <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Variance (Days)</Typography>
                     <Typography variant="h6" sx={{ 
-                      fontWeight: 600,
-                      color: (parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0) >= 0 ? '#4caf50' : '#f44336'
+                      fontWeight: 700,
+                      color: (parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0) >= 0 ? '#2e7d32' : '#d32f2f',
+                      fontFamily: '"Inter", sans-serif',
                     }}>
                       {((parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0)) >= 0 ? '+' : ''}
                       {((parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0)).toFixed(1)}d
                     </Typography>
                   </Grid>
                   <Grid item xs={4}>
-                    <Typography variant="caption" color="textSecondary">Variance (%)</Typography>
+                    <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Variance (%)</Typography>
                     <Typography variant="h6" sx={{ 
-                      fontWeight: 600,
-                      color: (parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0) >= 0 ? '#4caf50' : '#f44336'
+                      fontWeight: 700,
+                      color: (parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0) >= 0 ? '#2e7d32' : '#d32f2f',
+                      fontFamily: '"Inter", sans-serif',
                     }}>
                       {(((parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0)) / (parseFloat(formData.budgetDays) || 1) * 100) >= 0 ? '+' : ''}
                       {(((parseFloat(formData.actualDays) || 0) - (parseFloat(formData.budgetDays) || 0)) / (parseFloat(formData.budgetDays) || 1) * 100).toFixed(1)}%
@@ -1128,8 +1729,8 @@ function Utilization() {
           p: 3, 
           pt: 1,
           gap: 2,
-          bgcolor: '#f8f9fc',
-          borderTop: '1px solid #e8ecf1',
+          bgcolor: '#F9FAFB',
+          borderTop: '1px solid #E5E7EB',
         }}>
           <Button 
             onClick={handleCloseDialog} 
@@ -1139,6 +1740,10 @@ function Utilization() {
               textTransform: 'none',
               px: 3,
               py: 1,
+              borderColor: '#E5E7EB',
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+              '&:hover': { borderColor: '#9CA3AF', bgcolor: 'transparent' }
             }}
           >
             Cancel
@@ -1147,14 +1752,21 @@ function Utilization() {
             onClick={handleSubmit} 
             variant="contained"
             disabled={saving}
+            startIcon={<SaveIcon />}
             sx={{ 
               borderRadius: 2,
               textTransform: 'none',
               px: 4,
               py: 1,
+              fontFamily: '"Inter", sans-serif',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+              }
             }}
           >
-            {saving ? 'Saving...' : editingUtilization ? 'Update' : 'Create'}
+            {saving ? 'Saving...' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

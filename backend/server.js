@@ -1,17 +1,13 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const dotenv = require('dotenv');
-
-dotenv.config();
 
 const app = express();
-
-// Use environment variable for PORT, fallback to 5001
-const PORT = process.env.PORT || 5002;
+const PORT = 5005;
 
 // Middleware
 app.use(cors());
@@ -19,8 +15,7 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // MongoDB Connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/fleet_database';
-mongoose.connect(MONGO_URI, {
+mongoose.connect('mongodb://localhost:27017/fleet_database', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
@@ -52,12 +47,18 @@ const upload = multer({
 const vesselSchema = new mongoose.Schema({
   name: { type: String, required: true },
   imoNumber: { type: String, default: '' },
-  indType: String,
-  flag: String,
-  year: Number,
-  grt: Number,
-  speed: String,
-  totalSeat: Number,
+  indType: { type: String, default: '' },
+  flag: { type: String, default: '' },
+  year: { type: Number, default: 0 },
+  grt: { type: Number, default: 0 },
+  dwt: { type: Number, default: 0 },
+  speed: { type: String, default: '' },
+  totalSeat: { type: Number, default: 0 },
+  status: { 
+    type: String, 
+    enum: ['Active', 'Available', 'Sold', 'Under Maintenance'], 
+    default: 'Available' 
+  },
   documents: [{
     name: String,
     filePath: String,
@@ -87,7 +88,7 @@ const contractSchema = new mongoose.Schema({
   mob: { type: Number, default: 0 },
   demob: { type: Number, default: 0 },
   contractValue: { type: Number, default: 0 },
-  remarks: String,
+  remarks: { type: String, default: '' },
   status: { 
     type: String, 
     enum: ['Active', 'Completed', 'Pending'], 
@@ -102,11 +103,11 @@ const tenderSchema = new mongoose.Schema({
   projectDetails: { type: String, default: '' },
   proposedVessels: [{
     vessel: { type: mongoose.Schema.Types.ObjectId, ref: 'Vessel' },
-    proposedRate: { type: Number, default: 0 }
+    proposedRate: Number
   }],
-  commencementDate: { type: Date, required: true },
-  duration: { type: Number, required: true },
-  completionDate: { type: Date },
+  commencementDate: { type: Date },
+  duration: Number,
+  completionDate: Date,
   location: { type: String, default: '' },
   status: { 
     type: String, 
@@ -119,16 +120,16 @@ const tenderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Invoice Schema
+// ============ INVOICE SCHEMA - FIXED ============
 const invoiceSchema = new mongoose.Schema({
   invoiceNumber: { type: String, default: '' },
   billingMonth: { type: String, required: true },
   billingYear: { type: Number, required: true },
   contract: { type: mongoose.Schema.Types.ObjectId, ref: 'Contract' },
-  vessel: { type: mongoose.Schema.Types.ObjectId, ref: 'Vessel', required: true },
   client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
-  dcr: { type: Number, required: true },
-  duration: { type: Number, required: true },
+  vessel: { type: mongoose.Schema.Types.ObjectId, ref: 'Vessel', required: true },
+  dcr: { type: Number, required: true, default: 0 },
+  duration: { type: Number, required: true, default: 0 },
   mob: { type: Number, default: 0 },
   demob: { type: Number, default: 0 },
   totalAmount: { type: Number, default: 0 },
@@ -136,7 +137,7 @@ const invoiceSchema = new mongoose.Schema({
   expectedPaymentDate: { type: Date },
   paymentStatus: { 
     type: String, 
-    enum: ['Pending', 'Paid', 'Overdue', 'Submitted'], 
+    enum: ['Pending', 'Submitted', 'Paid', 'Overdue'], 
     default: 'Pending' 
   },
   remarks: { type: String, default: '' },
@@ -159,6 +160,7 @@ const budgetSchema = new mongoose.Schema({
   month: { type: String, required: true },
   year: { type: Number, required: true },
   budgetedSale: { type: Number, required: true },
+  actualSale: Number,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -173,11 +175,6 @@ const Utilization = mongoose.model('Utilization', utilizationSchema);
 const Budget = mongoose.model('Budget', budgetSchema);
 
 // ============ API ROUTES ============
-
-// ---------- TEST ROUTE ----------
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'API is working!' });
-});
 
 // ---------- VESSEL ROUTES ----------
 app.get('/api/vessels', async (req, res) => {
@@ -201,7 +198,11 @@ app.post('/api/vessels', async (req, res) => {
 
 app.put('/api/vessels/:id', async (req, res) => {
   try {
-    const vessel = await Vessel.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const vessel = await Vessel.findByIdAndUpdate(
+      req.params.id, 
+      req.body, 
+      { new: true, runValidators: true }
+    );
     if (!vessel) return res.status(404).json({ error: 'Vessel not found' });
     res.json(vessel);
   } catch (err) {
@@ -223,11 +224,26 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
   try {
     const vessel = await Vessel.findById(req.params.id);
     if (!vessel) return res.status(404).json({ error: 'Vessel not found' });
-    
+
     vessel.documents.push({
       name: req.body.name || req.file.originalname,
       filePath: req.file.path
     });
+    await vessel.save();
+    res.json(vessel);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/vessels/:vesselId/documents/:docId', async (req, res) => {
+  try {
+    const vessel = await Vessel.findById(req.params.vesselId);
+    if (!vessel) return res.status(404).json({ error: 'Vessel not found' });
+
+    vessel.documents = vessel.documents.filter(
+      doc => doc._id.toString() !== req.params.docId
+    );
     await vessel.save();
     res.json(vessel);
   } catch (err) {
@@ -290,27 +306,11 @@ app.get('/api/contracts', async (req, res) => {
 
 app.post('/api/contracts', async (req, res) => {
   try {
-    const contractData = {
-      contractTitle: req.body.contractTitle || '',
-      client: req.body.client,
-      vessel: req.body.vessel,
-      commencementDate: req.body.commencementDate,
-      duration: req.body.duration,
-      dcr: req.body.dcr,
-      mob: req.body.mob || 0,
-      demob: req.body.demob || 0,
-      contractValue: req.body.contractValue,
-      remarks: req.body.remarks || '',
-      status: req.body.status || 'Active',
-    };
-
-    const contract = new Contract(contractData);
+    const contract = new Contract(req.body);
     await contract.save();
-    
     const populatedContract = await Contract.findById(contract._id)
       .populate('client')
       .populate('vessel');
-    
     res.status(201).json(populatedContract);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -319,11 +319,7 @@ app.post('/api/contracts', async (req, res) => {
 
 app.put('/api/contracts/:id', async (req, res) => {
   try {
-    const contract = await Contract.findByIdAndUpdate(
-      req.params.id, 
-      req.body, 
-      { new: true, runValidators: true }
-    )
+    const contract = await Contract.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('client')
       .populate('vessel');
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
@@ -358,34 +354,11 @@ app.get('/api/tenders', async (req, res) => {
 
 app.post('/api/tenders', async (req, res) => {
   try {
-    let completionDate = null;
-    if (req.body.commencementDate && req.body.duration) {
-      const date = new Date(req.body.commencementDate);
-      date.setDate(date.getDate() + parseInt(req.body.duration));
-      completionDate = date;
-    }
-
-    const tenderData = {
-      client: req.body.client,
-      projectDetails: req.body.projectDetails || '',
-      proposedVessels: req.body.proposedVessels || [],
-      commencementDate: req.body.commencementDate,
-      duration: parseFloat(req.body.duration),
-      completionDate: completionDate,
-      location: req.body.location || '',
-      status: req.body.status || 'Pending Submission',
-      chances: req.body.chances || '',
-      remarks: req.body.remarks || '',
-      submittedDate: req.body.submittedDate || new Date(),
-    };
-
-    const tender = new Tender(tenderData);
+    const tender = new Tender(req.body);
     await tender.save();
-    
     const populatedTender = await Tender.findById(tender._id)
       .populate('client')
       .populate('proposedVessels.vessel');
-    
     res.status(201).json(populatedTender);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -394,26 +367,9 @@ app.post('/api/tenders', async (req, res) => {
 
 app.put('/api/tenders/:id', async (req, res) => {
   try {
-    let completionDate = null;
-    if (req.body.commencementDate && req.body.duration) {
-      const date = new Date(req.body.commencementDate);
-      date.setDate(date.getDate() + parseInt(req.body.duration));
-      completionDate = date;
-    }
-
-    const updateData = {
-      ...req.body,
-      completionDate: completionDate,
-    };
-
-    const tender = await Tender.findByIdAndUpdate(
-      req.params.id, 
-      updateData, 
-      { new: true, runValidators: true }
-    )
+    const tender = await Tender.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('client')
       .populate('proposedVessels.vessel');
-    
     if (!tender) return res.status(404).json({ error: 'Tender not found' });
     res.json(tender);
   } catch (err) {
@@ -436,8 +392,8 @@ app.get('/api/invoices', async (req, res) => {
   try {
     const invoices = await Invoice.find()
       .populate('contract')
-      .populate('vessel')
       .populate('client')
+      .populate('vessel')
       .sort({ createdAt: -1 });
     res.json(invoices);
   } catch (err) {
@@ -447,56 +403,27 @@ app.get('/api/invoices', async (req, res) => {
 
 app.post('/api/invoices', async (req, res) => {
   try {
-    console.log('📝 Creating invoice:', req.body);
-    
-    const invoiceData = {
-      invoiceNumber: req.body.invoiceNumber || `INV-${Date.now()}`,
-      billingMonth: req.body.billingMonth,
-      billingYear: req.body.billingYear,
-      contract: req.body.contract || null,
-      vessel: req.body.vessel,
-      client: req.body.client,
-      dcr: req.body.dcr,
-      duration: req.body.duration,
-      mob: req.body.mob || 0,
-      demob: req.body.demob || 0,
-      totalAmount: req.body.totalAmount,
-      submissionDate: req.body.submissionDate,
-      expectedPaymentDate: req.body.expectedPaymentDate,
-      paymentStatus: req.body.paymentStatus || 'Pending',
-      remarks: req.body.remarks || '',
-    };
-
-    const invoice = new Invoice(invoiceData);
+    const invoice = new Invoice(req.body);
     await invoice.save();
-    
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('contract')
-      .populate('vessel')
-      .populate('client');
-    
-    console.log('✅ Invoice created:', populatedInvoice);
+      .populate('client')
+      .populate('vessel');
     res.status(201).json(populatedInvoice);
   } catch (err) {
-    console.error('❌ Error creating invoice:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.put('/api/invoices/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findByIdAndUpdate(
-      req.params.id, 
-      req.body, 
-      { new: true, runValidators: true }
-    )
+    const invoice = await Invoice.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('contract')
-      .populate('vessel')
-      .populate('client');
+      .populate('client')
+      .populate('vessel');
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     res.json(invoice);
   } catch (err) {
-    console.error('❌ Error updating invoice:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -525,43 +452,22 @@ app.get('/api/utilizations', async (req, res) => {
 
 app.post('/api/utilizations', async (req, res) => {
   try {
-    console.log('📝 Creating utilization:', req.body);
-    
-    const utilizationData = {
-      vessel: req.body.vessel,
-      month: req.body.month,
-      year: req.body.year,
-      budgetDays: req.body.budgetDays,
-      actualDays: req.body.actualDays,
-      remarks: req.body.remarks || '',
-    };
-
-    const utilization = new Utilization(utilizationData);
+    const utilization = new Utilization(req.body);
     await utilization.save();
-    
-    const populatedUtilization = await Utilization.findById(utilization._id)
-      .populate('vessel');
-    
-    console.log('✅ Utilization created:', populatedUtilization);
+    const populatedUtilization = await Utilization.findById(utilization._id).populate('vessel');
     res.status(201).json(populatedUtilization);
   } catch (err) {
-    console.error('❌ Error creating utilization:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.put('/api/utilizations/:id', async (req, res) => {
   try {
-    const utilization = await Utilization.findByIdAndUpdate(
-      req.params.id, 
-      req.body, 
-      { new: true, runValidators: true }
-    )
+    const utilization = await Utilization.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('vessel');
     if (!utilization) return res.status(404).json({ error: 'Utilization record not found' });
     res.json(utilization);
   } catch (err) {
-    console.error('❌ Error updating utilization:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -623,13 +529,13 @@ app.get('/api/dashboard', async (req, res) => {
     const totalClients = await Client.countDocuments();
     const activeContracts = await Contract.countDocuments({ status: 'Active' });
     const totalInvoices = await Invoice.countDocuments();
-    
+
     const invoices = await Invoice.find();
     const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-    
+
     const pendingInvoices = await Invoice.countDocuments({ paymentStatus: 'Pending' });
     const overdueInvoices = await Invoice.countDocuments({ paymentStatus: 'Overdue' });
-    
+
     res.json({
       totalVessels,
       totalClients,
@@ -648,5 +554,4 @@ app.get('/api/dashboard', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📁 Uploads folder: ${path.join(__dirname, '../uploads')}`);
-  console.log(`📊 MongoDB: fleet_database`);
 });

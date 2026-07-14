@@ -27,10 +27,13 @@ import {
   Alert,
   Grid,
   Avatar,
-  Card,
-  CardContent,
   Tooltip,
   Collapse,
+  Checkbox,
+  Fade,
+  alpha,
+  Divider,
+  Menu,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -44,9 +47,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Cancel as CancelIcon,
+  Visibility as VisibilityIcon,
+  ArrowDropDown as ArrowDropDownIcon,
 } from '@mui/icons-material';
 
-const API_URL = 'https://fleet-database-backend.onrender.com/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Tenders() {
   const [tenders, setTenders] = useState([]);
@@ -58,6 +63,20 @@ function Tenders() {
   const [expandedRows, setExpandedRows] = useState({});
   const [showGantt, setShowGantt] = useState(true);
   const [showTable, setShowTable] = useState(true);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    client: true,
+    projectDetails: true,
+    proposedVessel: true,
+    proposedRate: true,
+    period: true,
+    duration: true,
+    status: true,
+    chances: true,
+    remarks: true,
+    submittedDate: true,
+    actions: true,
+  });
   const [formData, setFormData] = useState({
     client: '',
     projectDetails: '',
@@ -115,8 +134,6 @@ function Tenders() {
         axios.get(`${API_URL}/clients`),
         axios.get(`${API_URL}/vessels`),
       ]);
-      console.log('Tenders data:', tendersRes.data);
-      console.log('Vessels data:', vesselsRes.data);
       setTenders(tendersRes.data);
       setClients(clientsRes.data);
       setVessels(vesselsRes.data);
@@ -310,9 +327,16 @@ function Tenders() {
   const underReviewCount = tenders.filter(t => t.status === 'Under Review').length;
   const submittedCount = tenders.filter(t => t.status === 'Submitted').length;
   const pendingCount = tenders.filter(t => t.status === 'Pending Submission').length;
-  const declinedCount = tenders.filter(t => t.status === 'Decline').length;
-  const unsuccessfulCount = tenders.filter(t => t.status === 'Unsuccessful').length;
-  const abortedCount = tenders.filter(t => t.status === 'Aborted').length;
+  const unsuccessfulCount = tenders.filter(t => t.status === 'Unsuccessful' || t.status === 'Decline' || t.status === 'Aborted').length;
+
+  const statCards = [
+    { title: 'Total Tenders', value: totalTenders, icon: <TenderIcon sx={{ fontSize: 22 }} />, color: '#1976d2', bgColor: 'rgba(25, 118, 210, 0.1)' },
+    { title: 'Awarded', value: awardedCount, icon: <CheckCircleIcon sx={{ fontSize: 22 }} />, color: '#4caf50', bgColor: 'rgba(76, 175, 80, 0.1)' },
+    { title: 'Under Review', value: underReviewCount, icon: <PendingIcon sx={{ fontSize: 22 }} />, color: '#ff9800', bgColor: 'rgba(255, 152, 0, 0.1)' },
+    { title: 'Submitted', value: submittedCount, icon: <TenderIcon sx={{ fontSize: 22 }} />, color: '#2196f3', bgColor: 'rgba(33, 150, 243, 0.1)' },
+    { title: 'Pending', value: pendingCount, icon: <PendingIcon sx={{ fontSize: 22 }} />, color: '#9c27b0', bgColor: 'rgba(156, 39, 176, 0.1)' },
+    { title: 'Unsuccessful', value: unsuccessfulCount, icon: <CancelIcon sx={{ fontSize: 22 }} />, color: '#f44336', bgColor: 'rgba(244, 67, 54, 0.1)' },
+  ];
 
   // Group tenders by year
   const getYear = (date) => {
@@ -329,7 +353,7 @@ function Tenders() {
 
   const sortedYears = Object.keys(groupedTenders).sort((a, b) => b - a);
 
-  // Gantt Chart Data
+  // Gantt Chart Data - No labels, just bars
   const ganttData = tenders
     .filter(t => t.commencementDate && t.duration)
     .map(t => {
@@ -351,122 +375,63 @@ function Tenders() {
   const maxDate = ganttData.length > 0 ? ganttData[ganttData.length - 1].end : new Date();
   const totalDays = Math.max((maxDate - minDate) / (1000 * 60 * 60 * 24), 1);
 
-  // Get today's position for the line
-  const today = new Date();
-  const todayOffset = Math.max((today - minDate) / (1000 * 60 * 60 * 24), 0);
-  const todayPosition = Math.min((todayOffset / totalDays) * 100, 100);
-
-  // Generate month labels for Gantt chart
-  const generateGanttLabels = () => {
-    if (ganttData.length === 0) return [];
-    const labels = [];
-    const current = new Date(minDate);
-    current.setDate(1);
-    while (current <= maxDate) {
-      const month = current.toLocaleString('default', { month: 'short' });
-      const year = current.getFullYear();
-      labels.push({ month, year, date: new Date(current) });
-      current.setMonth(current.getMonth() + 1);
-    }
-    return labels;
+  // Handle column visibility
+  const handleColumnToggle = (column) => {
+    setVisibleColumns({ ...visibleColumns, [column]: !visibleColumns[column] });
   };
 
-  const ganttMonthLabels = generateGanttLabels();
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const columnDefs = [
+    { key: 'client', label: 'Client/Job' },
+    { key: 'projectDetails', label: 'Project Details' },
+    { key: 'proposedVessel', label: 'Proposed Vessel' },
+    { key: 'proposedRate', label: 'Proposed Rate' },
+    { key: 'period', label: 'Period' },
+    { key: 'duration', label: 'Duration' },
+    { key: 'status', label: 'Status' },
+    { key: 'chances', label: 'Chances' },
+    { key: 'remarks', label: 'Remarks' },
+    { key: 'submittedDate', label: 'Submitted Date' },
+    { key: 'actions', label: 'Actions' },
+  ];
 
   if (loading) {
     return <LinearProgress />;
   }
 
   return (
-    <Box>
+    <Box sx={{ fontFamily: '"Inter", sans-serif' }}>
       {/* Page Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#0a1929', mb: 0.5 }}>
-          Tenders Submitted
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          Manage your tender submissions and track progress
-        </Typography>
-      </Box>
-
-      {/* Stats Cards - Added Missing Status */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Total
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#0a1929' }}>
-                {totalTenders}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #4caf50' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Awarded
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#4caf50' }}>
-                {awardedCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #ff9800' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Under Review
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff9800' }}>
-                {underReviewCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #2196f3' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Submitted
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#2196f3' }}>
-                {submittedCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #9c27b0' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Pending
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#9c27b0' }}>
-                {pendingCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} sm={4} md={2}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', borderLeft: '4px solid #f44336' }}>
-            <CardContent sx={{ py: 1.5 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Unsuccessful
-              </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#f44336' }}>
-                {unsuccessfulCount + declinedCount + abortedCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Add Button */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              fontWeight: 700, 
+              color: '#111827', 
+              mb: 0.5,
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
+            Tenders
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
+            Manage your tender submissions and track progress
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -477,6 +442,7 @@ function Tenders() {
             px: 4,
             py: 1.2,
             fontWeight: 600,
+            fontFamily: '"Inter", sans-serif',
             background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
             '&:hover': {
               background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
@@ -487,8 +453,81 @@ function Tenders() {
         </Button>
       </Box>
 
-      {/* Collapsible Gantt Chart - Fits Page Width */}
-      <Paper sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', mb: 3, overflow: 'hidden' }}>
+      {/* Stats Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {statCards.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={4} lg={2} key={index}>
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 3,
+                border: '1px solid #f0f2f5',
+                p: 2.5,
+                height: 100,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                '&:hover': {
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                  borderColor: 'transparent',
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar
+                  sx={{
+                    bgcolor: stat.bgColor,
+                    color: stat.color,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 2,
+                  }}
+                >
+                  {stat.icon}
+                </Avatar>
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: '#94a3b8',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      fontSize: '0.6rem',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {stat.title}
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{
+                      fontWeight: 700,
+                      color: stat.color,
+                      lineHeight: 1.2,
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {stat.value}
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* ============ CLEAN GANTT CHART - NO MONTHS, NO YEARS ============ */}
+      <Paper 
+        sx={{ 
+          borderRadius: 3, 
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)', 
+          mb: 3, 
+          overflow: 'hidden',
+          border: '1px solid #f0f2f5',
+        }}
+      >
         <Box 
           sx={{ 
             p: 2, 
@@ -496,11 +535,20 @@ function Tenders() {
             justifyContent: 'space-between', 
             alignItems: 'center',
             cursor: 'pointer',
-            '&:hover': { bgcolor: '#f5f5f5' },
+            bgcolor: '#F9FAFB',
+            borderBottom: showGantt ? '1px solid #E5E7EB' : 'none',
+            '&:hover': { bgcolor: '#F3F4F6' },
           }}
           onClick={toggleGantt}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929' }}>
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontWeight: 600, 
+              color: '#111827',
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
             Tender Timeline (Gantt Chart)
           </Typography>
           <IconButton>
@@ -509,74 +557,29 @@ function Tenders() {
         </Box>
         
         <Collapse in={showGantt}>
-          <Box sx={{ p: 3, pt: 0 }}>
+          <Box sx={{ p: 3, pt: 2 }}>
             {ganttData.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+              <Typography color="textSecondary" align="center" sx={{ py: 4, fontFamily: '"Inter", sans-serif' }}>
                 No tenders with dates to display
               </Typography>
             ) : (
               <Box sx={{ width: '100%', overflow: 'hidden' }}>
                 <Box sx={{ width: '100%', position: 'relative' }}>
-                  {/* Today line */}
-                  {today >= minDate && today <= maxDate && (
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        left: `${todayPosition}%`,
-                        top: 0,
-                        bottom: 0,
-                        width: 2,
-                        bgcolor: '#f44336',
-                        zIndex: 5,
-                        '&::after': {
-                          content: '"Today"',
-                          position: 'absolute',
-                          top: -18,
-                          left: -12,
-                          fontSize: '0.6rem',
-                          color: '#f44336',
-                          fontWeight: 'bold',
-                        }
-                      }}
-                    />
-                  )}
-                  
-                  {/* Month/Year Headers */}
-                  <Box sx={{ display: 'flex', borderBottom: '2px solid #e0e0e0', mb: 1 }}>
-                    <Box sx={{ width: 150, flexShrink: 0 }} />
-                    <Box sx={{ flex: 1, display: 'flex', position: 'relative', height: 20 }}>
-                      {ganttMonthLabels.map((label, index) => {
-                        const monthStart = Math.max((label.date - minDate) / (1000 * 60 * 60 * 24), 0);
-                        const monthEnd = Math.min((new Date(label.date.getFullYear(), label.date.getMonth() + 1, 1) - minDate) / (1000 * 60 * 60 * 24), totalDays);
-                        const width = ((monthEnd - monthStart) / totalDays) * 100;
-                        const left = (monthStart / totalDays) * 100;
-                        
-                        return (
-                          <Box
-                            key={index}
-                            sx={{
-                              position: 'absolute',
-                              left: `${left}%`,
-                              width: `${width}%`,
-                              top: 0,
-                              textAlign: 'center',
-                              fontSize: '0.6rem',
-                              fontWeight: 600,
-                              color: '#666',
-                              borderRight: index < ganttMonthLabels.length - 1 ? '1px solid #eee' : 'none',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {label.month} {label.year}
-                          </Box>
-                        );
-                      })}
+                  {/* Header Row - just client and vessel labels */}
+                  <Box sx={{ display: 'flex', borderBottom: '2px solid #E5E7EB', mb: 1 }}>
+                    <Box sx={{ width: 180, flexShrink: 0, py: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#6B7280', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif' }}>
+                        Client / Vessel
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flex: 1, py: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#6B7280', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', textAlign: 'center', display: 'block' }}>
+                        Timeline
+                      </Typography>
                     </Box>
                   </Box>
                   
-                  {/* Gantt bars with fixed tooltip */}
+                  {/* Gantt bars - no labels on top */}
                   {ganttData.map((item, index) => {
                     const startOffset = Math.max((item.start - minDate) / (1000 * 60 * 60 * 24), 0);
                     const barWidth = Math.max((item.duration / totalDays) * 100, 3);
@@ -587,39 +590,36 @@ function Tenders() {
                                   statusColors[item.status] === 'secondary' ? '#9c27b0' : '#f44336';
                     
                     return (
-                      <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Box sx={{ width: 150, flexShrink: 0, pr: 2 }}>
-                          <Typography variant="body2" noWrap sx={{ fontWeight: 500, fontSize: '0.75rem' }}>
+                      <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+                        <Box sx={{ width: 180, flexShrink: 0, pr: 2 }}>
+                          <Typography variant="body2" noWrap sx={{ fontWeight: 600, fontSize: '0.75rem', fontFamily: '"Inter", sans-serif', color: '#111827' }}>
                             {item.clientName}
                           </Typography>
-                          <Typography variant="caption" color="textSecondary" noWrap sx={{ fontSize: '0.65rem' }}>
+                          <Typography variant="caption" color="textSecondary" noWrap sx={{ fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
                             {item.vesselNames}
                           </Typography>
                         </Box>
-                        <Box sx={{ flex: 1, height: 28, bgcolor: '#f5f5f5', borderRadius: 1, position: 'relative' }}>
+                        <Box sx={{ flex: 1, height: 28, bgcolor: '#F3F4F6', borderRadius: 1, position: 'relative' }}>
                           <Tooltip
                             title={
                               <Box sx={{ p: 1.5, minWidth: 200 }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff', mb: 0.5 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff', mb: 0.5, fontFamily: '"Inter", sans-serif' }}>
                                   {item.clientName || 'N/A'}
                                 </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
+                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Vessel:</strong> {item.vesselNames || 'N/A'}
                                 </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
+                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Rate:</strong> RM {item.rates || '0'}
                                 </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
+                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Period:</strong> {item.start?.toLocaleDateString() || 'N/A'} - {item.end?.toLocaleDateString() || 'N/A'}
                                 </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
+                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Duration:</strong> {item.duration || 0} days
                                 </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
+                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Status:</strong> {item.status || 'N/A'}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}>
-                                  <strong>Chances:</strong> {item.chances || 'N/A'}
                                 </Typography>
                               </Box>
                             }
@@ -638,11 +638,12 @@ function Tenders() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 color: 'white',
-                                fontSize: '0.55rem',
+                                fontSize: '0.5rem',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s',
                                 minWidth: barWidth > 5 ? 'auto' : '4px',
+                                fontFamily: '"Inter", sans-serif',
                                 '&:hover': {
                                   opacity: 0.8,
                                   transform: 'scaleY(1.1)',
@@ -663,8 +664,65 @@ function Tenders() {
         </Collapse>
       </Paper>
 
-      {/* Collapsible Table */}
-      <Paper sx={{ borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+      {/* ============ COLUMN VISIBILITY ============ */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title="Toggle Columns">
+            <Button
+              variant="outlined"
+              onClick={handleMenuOpen}
+              startIcon={<VisibilityIcon />}
+              endIcon={<ArrowDropDownIcon />}
+              sx={{ 
+                borderRadius: 2, 
+                textTransform: 'none',
+                fontFamily: '"Inter", sans-serif',
+                borderColor: '#E5E7EB',
+                color: '#6B7280',
+                '&:hover': { borderColor: '#1976d2', color: '#1976d2' }
+              }}
+            >
+              Columns
+            </Button>
+          </Tooltip>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleMenuClose}
+            PaperProps={{
+              sx: {
+                borderRadius: 2,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                p: 1,
+                minWidth: 180,
+              }
+            }}
+          >
+            <Typography variant="caption" sx={{ px: 1, py: 0.5, color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>
+              Show/Hide Columns
+            </Typography>
+            <Divider sx={{ my: 0.5 }} />
+            {columnDefs.map((col) => (
+              <MenuItem key={col.key} dense onClick={() => handleColumnToggle(col.key)}>
+                <Checkbox checked={visibleColumns[col.key]} size="small" />
+                <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', textTransform: 'capitalize' }}>
+                  {col.label}
+                </Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+        </Box>
+      </Box>
+
+      {/* ============ TENDERS LIST ============ */}
+      <Paper 
+        sx={{ 
+          borderRadius: 3, 
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)', 
+          overflow: 'hidden',
+          border: '1px solid #f0f2f5',
+        }}
+      >
         <Box 
           sx={{ 
             p: 2, 
@@ -672,11 +730,20 @@ function Tenders() {
             justifyContent: 'space-between', 
             alignItems: 'center',
             cursor: 'pointer',
-            '&:hover': { bgcolor: '#f5f5f5' },
+            bgcolor: '#F9FAFB',
+            borderBottom: showTable ? '1px solid #E5E7EB' : 'none',
+            '&:hover': { bgcolor: '#F3F4F6' },
           }}
           onClick={toggleTable}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929' }}>
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontWeight: 600, 
+              color: '#111827',
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
             Tenders List
           </Typography>
           <IconButton>
@@ -687,30 +754,48 @@ function Tenders() {
         <Collapse in={showTable}>
           <Box sx={{ p: 2, pt: 0 }}>
             {sortedYears.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+              <Typography color="textSecondary" align="center" sx={{ py: 4, fontFamily: '"Inter", sans-serif' }}>
                 No tenders found. Click "Add Tender" to get started.
               </Typography>
             ) : (
               sortedYears.map((year) => (
                 <Box key={year} sx={{ mb: 3 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#0a1929', mb: 1 }}>
-                    {year} ({groupedTenders[year].length} tenders)
-                  </Typography>
-                  <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 'none', border: '1px solid #e8ecf1' }}>
-                    <Table size="small">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Chip
+                      label={`${year} (${groupedTenders[year].length} tenders)`}
+                      sx={{ 
+                        fontWeight: 600,
+                        fontFamily: '"Inter", sans-serif',
+                        borderRadius: 1,
+                        bgcolor: '#F9FAFB',
+                        color: '#111827',
+                      }}
+                    />
+                  </Box>
+                  
+                  <TableContainer 
+                    component={Paper} 
+                    sx={{ 
+                      borderRadius: 2, 
+                      boxShadow: 'none', 
+                      border: '1px solid #E5E7EB',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    <Table size="small" sx={{ borderCollapse: 'collapse' }}>
                       <TableHead>
-                        <TableRow sx={{ bgcolor: '#f8f9fc' }}>
-                          <TableCell sx={{ fontWeight: 600 }}>CLIENT/JOB</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>PROJECT DETAILS</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>PROPOSED VESSEL</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>PROPOSED RATE</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>PERIOD</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>DURATION</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>STATUS</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>CHANCES</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>REMARKS</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>SUBMITTED DATE</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>ACTIONS</TableCell>
+                        <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                          {visibleColumns.client && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Client/Job</TableCell>}
+                          {visibleColumns.projectDetails && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Project Details</TableCell>}
+                          {visibleColumns.proposedVessel && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Proposed Vessel</TableCell>}
+                          {visibleColumns.proposedRate && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Proposed Rate</TableCell>}
+                          {visibleColumns.period && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Period</TableCell>}
+                          {visibleColumns.duration && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Duration</TableCell>}
+                          {visibleColumns.status && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Status</TableCell>}
+                          {visibleColumns.chances && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Chances</TableCell>}
+                          {visibleColumns.remarks && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Remarks</TableCell>}
+                          {visibleColumns.submittedDate && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Submitted Date</TableCell>}
+                          {visibleColumns.actions && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none', textAlign: 'center' }}>Actions</TableCell>}
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -722,106 +807,143 @@ function Tenders() {
                           
                           return (
                             <React.Fragment key={tender._id}>
-                              <TableRow hover>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Avatar sx={{ width: 24, height: 24, bgcolor: '#1976d2' }}>
-                                      <TenderIcon sx={{ fontSize: 12, color: 'white' }} />
-                                    </Avatar>
-                                    {clientName}
-                                  </Box>
-                                </TableCell>
-                                <TableCell>{tender.projectDetails || '-'}</TableCell>
-                                <TableCell>
-                                  {tender.proposedVessels?.map((v, i) => (
-                                    <Chip key={i} label={getVesselName(v.vessel)} size="small" sx={{ m: 0.2 }} />
-                                  ))}
-                                </TableCell>
-                                <TableCell>
-                                  {tender.proposedVessels?.map((v, i) => (
-                                    <Chip key={i} label={`RM ${v.proposedRate}`} size="small" variant="outlined" sx={{ m: 0.2 }} />
-                                  ))}
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2">
+                              <TableRow 
+                                hover
+                                sx={{ 
+                                  '&:hover': { bgcolor: '#F9FAFB' },
+                                  transition: 'background-color 0.2s',
+                                }}
+                              >
+                                {visibleColumns.client && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', fontWeight: 500, color: '#111827', fontSize: '0.8rem' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Avatar sx={{ width: 24, height: 24, bgcolor: '#1976d2', borderRadius: 1.5 }}>
+                                        <TenderIcon sx={{ fontSize: 12, color: 'white' }} />
+                                      </Avatar>
+                                      {clientName}
+                                    </Box>
+                                  </TableCell>
+                                )}
+                                {visibleColumns.projectDetails && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{tender.projectDetails || '-'}</TableCell>}
+                                {visibleColumns.proposedVessel && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
+                                    {tender.proposedVessels?.map((v, i) => (
+                                      <Chip key={i} label={getVesselName(v.vessel)} size="small" sx={{ m: 0.2, fontFamily: '"Inter", sans-serif' }} />
+                                    ))}
+                                  </TableCell>
+                                )}
+                                {visibleColumns.proposedRate && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
+                                    {tender.proposedVessels?.map((v, i) => (
+                                      <Chip key={i} label={`RM ${v.proposedRate}`} size="small" variant="outlined" sx={{ m: 0.2, fontFamily: '"Inter", sans-serif' }} />
+                                    ))}
+                                  </TableCell>
+                                )}
+                                {visibleColumns.period && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.75rem' }}>
                                     {tender.commencementDate ? new Date(tender.commencementDate).toLocaleDateString() : 'N/A'} to{' '}
                                     <span style={{ opacity: 0.6 }}>
                                       {completionDate ? new Date(completionDate).toLocaleDateString() : 'N/A'}
                                     </span>
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>{tender.duration || '-'} days</TableCell>
-                                <TableCell>
-                                  <Chip 
-                                    label={tender.status} 
-                                    color={getStatusColor(tender.status)} 
-                                    size="small"
-                                    icon={statusIconMap[tender.status] || null}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Chip 
-                                    label={tender.chances || 'N/A'} 
-                                    size="small" 
-                                    variant="outlined"
-                                    sx={{
-                                      borderColor: tender.chances === 'High' ? '#4caf50' :
-                                                 tender.chances === 'Medium' ? '#ff9800' :
-                                                 tender.chances === 'Low' ? '#f44336' : '#9e9e9e',
-                                      color: tender.chances === 'High' ? '#4caf50' :
-                                             tender.chances === 'Medium' ? '#ff9800' :
-                                             tender.chances === 'Low' ? '#f44336' : '#9e9e9e',
-                                    }}
-                                  />
-                                </TableCell>
-                                <TableCell>{tender.remarks || '-'}</TableCell>
-                                <TableCell>{tender.submittedDate ? new Date(tender.submittedDate).toLocaleDateString() : 'N/A'}</TableCell>
-                                <TableCell>
-                                  <IconButton size="small" onClick={() => handleOpenDialog(tender)} color="primary">
-                                    <EditIcon />
-                                  </IconButton>
-                                  <IconButton size="small" onClick={() => handleDelete(tender._id)} color="error">
-                                    <DeleteIcon />
-                                  </IconButton>
-                                  <IconButton size="small" onClick={() => toggleRow(tender._id)}>
-                                    {expandedRows[tender._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                  </IconButton>
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell colSpan={11} style={{ paddingBottom: 0, paddingTop: 0 }}>
-                                  <Collapse in={expandedRows[tender._id]} timeout="auto" unmountOnExit>
-                                    <Box sx={{ p: 2, bgcolor: '#f8f9fc', borderRadius: 2, m: 1 }}>
-                                      <Grid container spacing={2}>
-                                        <Grid item xs={6}>
-                                          <Typography variant="subtitle2" color="textSecondary">Project Details:</Typography>
-                                          <Typography variant="body2">{tender.projectDetails || 'N/A'}</Typography>
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                          <Typography variant="subtitle2" color="textSecondary">Location:</Typography>
-                                          <Typography variant="body2">{tender.location || 'N/A'}</Typography>
-                                        </Grid>
-                                        <Grid item xs={12}>
-                                          <Typography variant="subtitle2" color="textSecondary">Proposed Vessels & Rates:</Typography>
-                                          {tender.proposedVessels?.map((v, i) => (
-                                            <Typography key={i} variant="body2">
-                                              {getVesselName(v.vessel)}: RM {v.proposedRate}
-                                            </Typography>
-                                          ))}
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                          <Typography variant="subtitle2" color="textSecondary">Commencement Date:</Typography>
-                                          <Typography variant="body2">{tender.commencementDate ? new Date(tender.commencementDate).toLocaleDateString() : 'N/A'}</Typography>
-                                        </Grid>
-                                        <Grid item xs={6}>
-                                          <Typography variant="subtitle2" color="textSecondary">Completion Date:</Typography>
-                                          <Typography variant="body2">{completionDate ? new Date(completionDate).toLocaleDateString() : 'N/A'}</Typography>
-                                        </Grid>
-                                      </Grid>
+                                  </TableCell>
+                                )}
+                                {visibleColumns.duration && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{tender.duration || '-'} days</TableCell>}
+                                {visibleColumns.status && (
+                                  <TableCell sx={{ py: 2, border: 'none' }}>
+                                    <Chip 
+                                      label={tender.status} 
+                                      color={getStatusColor(tender.status)} 
+                                      size="small"
+                                      icon={statusIconMap[tender.status] || null}
+                                      sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif', borderRadius: '9999px' }}
+                                    />
+                                  </TableCell>
+                                )}
+                                {visibleColumns.chances && (
+                                  <TableCell sx={{ py: 2, border: 'none' }}>
+                                    <Chip 
+                                      label={tender.chances || 'N/A'} 
+                                      size="small" 
+                                      variant="outlined"
+                                      sx={{
+                                        borderColor: tender.chances === 'High' ? '#4caf50' :
+                                                   tender.chances === 'Medium' ? '#ff9800' :
+                                                   tender.chances === 'Low' ? '#f44336' : '#9e9e9e',
+                                        color: tender.chances === 'High' ? '#4caf50' :
+                                               tender.chances === 'Medium' ? '#ff9800' :
+                                               tender.chances === 'Low' ? '#f44336' : '#9e9e9e',
+                                        fontFamily: '"Inter", sans-serif',
+                                        fontWeight: 500,
+                                      }}
+                                    />
+                                  </TableCell>
+                                )}
+                                {visibleColumns.remarks && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{tender.remarks || '-'}</TableCell>}
+                                {visibleColumns.submittedDate && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
+                                  {tender.submittedDate ? new Date(tender.submittedDate).toLocaleDateString() : 'N/A'}
+                                </TableCell>}
+                                {visibleColumns.actions && (
+                                  <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                                      <Tooltip title="Edit">
+                                        <IconButton size="small" onClick={() => handleOpenDialog(tender)} sx={{ color: '#6B7280', '&:hover': { color: '#1976d2' } }}>
+                                          <EditIcon sx={{ fontSize: 18 }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Delete">
+                                        <IconButton size="small" onClick={() => handleDelete(tender._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
+                                          <DeleteIcon sx={{ fontSize: 18 }} />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Expand Details">
+                                        <IconButton size="small" onClick={() => toggleRow(tender._id)} sx={{ color: '#6B7280' }}>
+                                          {expandedRows[tender._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                        </IconButton>
+                                      </Tooltip>
                                     </Box>
-                                  </Collapse>
-                                </TableCell>
+                                  </TableCell>
+                                )}
                               </TableRow>
+                              {visibleColumns.actions && (
+                                <TableRow>
+                                  <TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} style={{ paddingBottom: 0, paddingTop: 0 }}>
+                                    <Collapse in={expandedRows[tender._id]} timeout="auto" unmountOnExit>
+                                      <Box sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, m: 1 }}>
+                                        <Grid container spacing={2}>
+                                          <Grid item xs={6}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Project Details:</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>{tender.projectDetails || 'N/A'}</Typography>
+                                          </Grid>
+                                          <Grid item xs={6}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Location:</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>{tender.location || 'N/A'}</Typography>
+                                          </Grid>
+                                          <Grid item xs={12}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Proposed Vessels & Rates:</Typography>
+                                            {tender.proposedVessels?.map((v, i) => (
+                                              <Typography key={i} variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>
+                                                {getVesselName(v.vessel)}: RM {v.proposedRate}
+                                              </Typography>
+                                            ))}
+                                          </Grid>
+                                          <Grid item xs={6}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Commencement Date:</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>
+                                              {tender.commencementDate ? new Date(tender.commencementDate).toLocaleDateString() : 'N/A'}
+                                            </Typography>
+                                          </Grid>
+                                          <Grid item xs={6}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Completion Date:</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>
+                                              {completionDate ? new Date(completionDate).toLocaleDateString() : 'N/A'}
+                                            </Typography>
+                                          </Grid>
+                                        </Grid>
+                                      </Box>
+                                    </Collapse>
+                                  </TableCell>
+                                </TableRow>
+                              )}
                             </React.Fragment>
                           );
                         })}
@@ -835,41 +957,93 @@ function Tenders() {
         </Collapse>
       </Paper>
 
-      {/* Standardized Dialog */}
+      {/* ============ MODERN DIALOG ============ */}
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog} 
         maxWidth="md" 
         fullWidth
+        TransitionComponent={Fade}
+        TransitionProps={{ timeout: 300 }}
         PaperProps={{
           sx: {
-            borderRadius: 2,
+            borderRadius: '16px',
             padding: 0,
             overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+            border: '1px solid #E5E7EB',
           }
         }}
       >
-        <DialogTitle sx={{ 
+        <Box sx={{ 
           display: 'flex',
           alignItems: 'center',
-          gap: 1.5,
+          justifyContent: 'space-between',
           p: 3,
-          pb: 1,
-          bgcolor: '#f8f9fc',
-          borderBottom: '1px solid #e8ecf1',
+          pb: 1.5,
+          bgcolor: '#F9FAFB',
+          borderBottom: '1px solid #E5E7EB',
         }}>
-          <TenderIcon sx={{ color: '#1976d2', fontSize: 28 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929' }}>
-            {editingTender ? 'Edit Tender' : 'Add Tender'}
-          </Typography>
-        </DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ 
+              bgcolor: '#1976d2', 
+              width: 40, 
+              height: 40, 
+              borderRadius: '12px',
+            }}>
+              <TenderIcon sx={{ color: 'white', fontSize: 22 }} />
+            </Avatar>
+            <Box>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#111827', 
+                  lineHeight: 1.2,
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                {editingTender ? 'Edit Tender' : 'Add Tender'}
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: '#6B7280',
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                {editingTender ? 'Update tender information' : 'Enter tender details below'}
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton 
+            onClick={handleCloseDialog} 
+            sx={{ 
+              color: '#6B7280',
+              '&:hover': { bgcolor: alpha('#6B7280', 0.08) }
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
 
-        <DialogContent sx={{ p: 3, pt: 2 }}>
+        <DialogContent sx={{ p: 3, pt: 2.5 }}>
           <Grid container spacing={2.5}>
-            {/* Client */}
             <Grid item xs={12}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Client *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Client <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <FormControl fullWidth size="small">
                 <Select
@@ -877,7 +1051,23 @@ function Tenders() {
                   value={formData.client}
                   onChange={handleInputChange}
                   displayEmpty
-                  sx={{ borderRadius: 2 }}
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                    },
+                    '& .MuiSelect-select': {
+                      fontFamily: '"Inter", sans-serif',
+                      color: '#111827',
+                      fontSize: '0.875rem',
+                      py: 1.5,
+                    },
+                  }}
                 >
                   <MenuItem value="">Select Client</MenuItem>
                   {clients.map((client) => (
@@ -887,9 +1077,20 @@ function Tenders() {
               </FormControl>
             </Grid>
 
-            {/* Project Details */}
             <Grid item xs={12}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Project Details (Vessel Speed & Seat Capacity)
               </Typography>
               <TextField
@@ -900,13 +1101,42 @@ function Tenders() {
                 variant="outlined"
                 placeholder="e.g., FCB 25KNT/80PAX"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
-            {/* Location */}
             <Grid item xs={12}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Location
               </Typography>
               <TextField
@@ -917,25 +1147,64 @@ function Tenders() {
                 variant="outlined"
                 placeholder="e.g., Offshore Malaysia"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
-            {/* Proposed Vessels */}
             <Grid item xs={12}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 1 }}>
-                Proposed Vessels *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 1,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Proposed Vessels <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               {formData.proposedVessels.map((item, index) => (
                 <Grid container spacing={2} key={index} sx={{ mb: 1 }}>
-                  <Grid item xs={6}>
+                  <Grid item xs={5}>
                     <FormControl fullWidth size="small">
-                      <InputLabel>Vessel</InputLabel>
+                      <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Vessel</InputLabel>
                       <Select
                         value={item.vessel}
                         onChange={(e) => handleVesselChange(index, 'vessel', e.target.value)}
                         label="Vessel"
-                        sx={{ borderRadius: 2 }}
+                        sx={{ 
+                          borderRadius: 2,
+                          bgcolor: '#F9FAFB',
+                          '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                          '&:hover': { bgcolor: '#F3F4F6' },
+                          '& .MuiSelect-select': {
+                            fontFamily: '"Inter", sans-serif',
+                            fontSize: '0.875rem',
+                            py: 1.5,
+                          },
+                        }}
                       >
                         <MenuItem value="">Select Vessel</MenuItem>
                         {vessels.map((vessel) => (
@@ -953,16 +1222,42 @@ function Tenders() {
                       onChange={(e) => handleVesselChange(index, 'proposedRate', e.target.value)}
                       variant="outlined"
                       size="small"
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                      sx={{ 
+                        '& .MuiOutlinedInput-root': { 
+                          borderRadius: 2,
+                          bgcolor: '#F9FAFB',
+                          '& fieldset': { border: 'none' },
+                          '&:hover': { bgcolor: '#F3F4F6' },
+                          '&.Mui-focused': { 
+                            bgcolor: 'white',
+                            boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                            '& fieldset': { border: '1px solid #1976d2' },
+                          }
+                        },
+                        '& .MuiInputBase-input': {
+                          fontFamily: '"Inter", sans-serif',
+                          color: '#111827',
+                          fontSize: '0.875rem',
+                          py: 1.5,
+                        },
+                      }}
                     />
                   </Grid>
-                  <Grid item xs={2}>
+                  <Grid item xs={3}>
                     <Button
                       variant="outlined"
                       color="error"
                       onClick={() => removeVesselRow(index)}
                       disabled={formData.proposedVessels.length === 1}
-                      sx={{ borderRadius: 2, textTransform: 'none' }}
+                      sx={{ 
+                        borderRadius: 2, 
+                        textTransform: 'none', 
+                        fontFamily: '"Inter", sans-serif',
+                        borderColor: '#E5E7EB',
+                        color: '#6B7280',
+                        '&:hover': { borderColor: '#ef4444', color: '#ef4444' },
+                        width: '100%',
+                      }}
                     >
                       Remove
                     </Button>
@@ -972,17 +1267,36 @@ function Tenders() {
               <Button 
                 variant="outlined" 
                 onClick={addVesselRow} 
-                sx={{ mt: 1, borderRadius: 2, textTransform: 'none' }}
+                sx={{ 
+                  mt: 1, 
+                  borderRadius: 2, 
+                  textTransform: 'none', 
+                  fontFamily: '"Inter", sans-serif',
+                  borderColor: '#1976d2',
+                  color: '#1976d2',
+                  '&:hover': { bgcolor: 'rgba(25,118,210,0.04)' },
+                }}
                 startIcon={<AddIcon />}
               >
                 Add Vessel
               </Button>
             </Grid>
 
-            {/* Commencement Date and Duration */}
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Commencement Date *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Commencement Date <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <TextField
                 fullWidth
@@ -992,14 +1306,44 @@ function Tenders() {
                 onChange={handleInputChange}
                 variant="outlined"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
 
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
-                Duration (days) *
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Duration (days) <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
               <TextField
                 fullWidth
@@ -1010,13 +1354,42 @@ function Tenders() {
                 variant="outlined"
                 placeholder="e.g., 30"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
-            {/* Submitted Date */}
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Submitted Date
               </Typography>
               <TextField
@@ -1027,14 +1400,43 @@ function Tenders() {
                 onChange={handleInputChange}
                 variant="outlined"
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
 
-            {/* Completion Date - Auto-calculated */}
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Completion Date (Auto-calculated)
               </Typography>
               <TextField
@@ -1043,13 +1445,36 @@ function Tenders() {
                 variant="outlined"
                 size="small"
                 InputProps={{ readOnly: true }}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: '#f5f5f5' } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2, 
+                    bgcolor: '#F3F4F6',
+                    '& fieldset': { border: 'none' },
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
 
-            {/* Status */}
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Status
               </Typography>
               <FormControl fullWidth size="small">
@@ -1057,7 +1482,23 @@ function Tenders() {
                   name="status"
                   value={formData.status}
                   onChange={handleInputChange}
-                  sx={{ borderRadius: 2 }}
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                    },
+                    '& .MuiSelect-select': {
+                      fontFamily: '"Inter", sans-serif',
+                      color: '#111827',
+                      fontSize: '0.875rem',
+                      py: 1.5,
+                    },
+                  }}
                 >
                   {statusOptions.map((option) => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -1066,9 +1507,20 @@ function Tenders() {
               </FormControl>
             </Grid>
 
-            {/* Chances */}
             <Grid item xs={6}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Chances
               </Typography>
               <FormControl fullWidth size="small">
@@ -1077,7 +1529,23 @@ function Tenders() {
                   value={formData.chances}
                   onChange={handleInputChange}
                   displayEmpty
-                  sx={{ borderRadius: 2 }}
+                  sx={{ 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                    },
+                    '& .MuiSelect-select': {
+                      fontFamily: '"Inter", sans-serif',
+                      color: '#111827',
+                      fontSize: '0.875rem',
+                      py: 1.5,
+                    },
+                  }}
                 >
                   <MenuItem value="">Select Chances</MenuItem>
                   {chancesOptions.map((option) => (
@@ -1087,9 +1555,20 @@ function Tenders() {
               </FormControl>
             </Grid>
 
-            {/* Remarks */}
             <Grid item xs={12}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#555', display: 'block', mb: 0.5 }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
                 Remarks
               </Typography>
               <TextField
@@ -1102,7 +1581,25 @@ function Tenders() {
                 size="small"
                 multiline
                 rows={2}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
               />
             </Grid>
           </Grid>
@@ -1112,8 +1609,8 @@ function Tenders() {
           p: 3, 
           pt: 1,
           gap: 2,
-          bgcolor: '#f8f9fc',
-          borderTop: '1px solid #e8ecf1',
+          bgcolor: '#F9FAFB',
+          borderTop: '1px solid #E5E7EB',
         }}>
           <Button 
             onClick={handleCloseDialog} 
@@ -1123,6 +1620,10 @@ function Tenders() {
               textTransform: 'none',
               px: 3,
               py: 1,
+              borderColor: '#E5E7EB',
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+              '&:hover': { borderColor: '#9CA3AF', bgcolor: 'transparent' }
             }}
           >
             Cancel
@@ -1131,14 +1632,21 @@ function Tenders() {
             onClick={handleSubmit} 
             variant="contained"
             disabled={saving}
+            startIcon={<SaveIcon />}
             sx={{ 
               borderRadius: 2,
               textTransform: 'none',
               px: 4,
               py: 1,
+              fontFamily: '"Inter", sans-serif',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+              }
             }}
           >
-            {saving ? 'Saving...' : editingTender ? 'Update' : 'Create'}
+            {saving ? 'Saving...' : editingTender ? 'Update Tender' : 'Create Tender'}
           </Button>
         </DialogActions>
       </Dialog>

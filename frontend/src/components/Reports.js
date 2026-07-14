@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
   Paper,
@@ -15,10 +15,18 @@ import {
   Select,
   MenuItem,
   Tooltip,
+  Avatar,
+  Zoom,
 } from '@mui/material';
 import {
   Print as PrintIcon,
   Download as DownloadIcon,
+  Description as ContractIcon,
+  RequestQuote as TenderIcon,
+  Speed as UtilizationIcon,
+  Receipt as InvoiceIcon,
+  TrendingUp as RevenueIcon,
+  TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS,
@@ -34,6 +42,7 @@ import {
   Filler,
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import html2canvas from 'html2canvas';
 
 ChartJS.register(
   CategoryScale,
@@ -48,7 +57,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'https://fleet-database-backend.onrender.com/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Reports() {
   const [loading, setLoading] = useState(true);
@@ -60,6 +69,8 @@ function Reports() {
   const [budgets, setBudgets] = useState([]);
   const [clients, setClients] = useState([]);
   const [vessels, setVessels] = useState([]);
+  const printRef = useRef();
+  const [isPrinting, setIsPrinting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -476,41 +487,66 @@ function Reports() {
     },
   };
 
-  // ============ GANTT ============
-  const ganttData = tenders.filter(t => t.commencementDate && t.duration).map(t => {
-    const start = new Date(t.commencementDate);
-    const end = new Date(start);
-    end.setDate(end.getDate() + parseInt(t.duration));
-    return {
-      ...t,
-      start,
-      end,
-      clientName: getClientName(t.client),
-      vesselNames: t.proposedVessels?.map(v => getVesselName(v.vessel)).join(', ') || 'N/A',
-      rates: t.proposedVessels?.map(v => v.proposedRate).join(', ') || 'N/A',
-      duration: parseInt(t.duration)
-    };
-  }).sort((a, b) => a.start - b.start);
+  // ============ GANTT CHART ============
+  const ganttData = tenders
+    .filter(t => t.commencementDate && t.duration)
+    .map(t => {
+      const start = new Date(t.commencementDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + parseInt(t.duration));
+      return {
+        ...t,
+        start,
+        end,
+        clientName: getClientName(t.client),
+        vesselNames: t.proposedVessels?.map(v => getVesselName(v.vessel)).join(', ') || 'N/A',
+        rates: t.proposedVessels?.map(v => v.proposedRate).join(', ') || 'N/A',
+        duration: parseInt(t.duration)
+      };
+    })
+    .sort((a, b) => a.start - b.start);
 
-  const minGanttDate = ganttData.length > 0 ? ganttData[0].start : new Date();
-  const maxGanttDate = ganttData.length > 0 ? ganttData[ganttData.length - 1].end : new Date();
-  const ganttTotalDays = Math.max((maxGanttDate - minGanttDate) / (1000 * 60 * 60 * 24), 1);
+  let chartStartDate, chartEndDate;
+  if (ganttData.length > 0) {
+    chartStartDate = new Date(ganttData[0].start);
+    chartEndDate = new Date(ganttData[ganttData.length - 1].end);
+    chartStartDate.setDate(1);
+    chartEndDate.setMonth(chartEndDate.getMonth() + 1);
+    chartEndDate.setDate(0);
+  } else {
+    const now = new Date();
+    chartStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    chartEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
 
-  const generateGanttLabels = () => {
-    if (ganttData.length === 0) return [];
-    const labels = [];
-    const current = new Date(minGanttDate);
-    current.setDate(1);
-    while (current <= maxGanttDate) {
-      labels.push({ month: current.toLocaleString('default', { month: 'short' }), year: current.getFullYear(), date: new Date(current) });
-      current.setMonth(current.getMonth() + 1);
-    }
-    return labels;
-  };
-  const ganttMonthLabels = generateGanttLabels();
+  const totalDaysInChart = Math.max(
+    (chartEndDate - chartStartDate) / (1000 * 60 * 60 * 24),
+    1
+  );
+
+  const ganttBars = ganttData.map(item => {
+    const startOffset = Math.max(
+      (item.start - chartStartDate) / (1000 * 60 * 60 * 24),
+      0
+    );
+    const barWidth = Math.max(
+      (item.duration / totalDaysInChart) * 100,
+      2
+    );
+    const leftPos = (startOffset / totalDaysInChart) * 100;
+    return { ...item, leftPos, barWidth };
+  });
 
   const getStatusColor = (status) => {
-    const colors = { 'Awarded': '#4caf50', 'Under Review': '#ff9800', 'Submitted': '#2196f3', 'Pending Submission': '#9c27b0', 'Decline': '#f44336', 'Unsuccessful': '#795548', 'Aborted': '#607d8b' };
+    const colors = {
+      'Awarded': '#4caf50',
+      'Under Review': '#ff9800',
+      'Submitted': '#2196f3',
+      'Pending Submission': '#9c27b0',
+      'Decline': '#f44336',
+      'Unsuccessful': '#795548',
+      'Aborted': '#607d8b'
+    };
     return colors[status] || '#9e9e9e';
   };
 
@@ -615,218 +651,586 @@ function Reports() {
   const totalUtilActual = filteredUtilizations.reduce((sum, u) => sum + (u.actualDays || 0), 0);
   const overallUtilization = totalUtilBudget > 0 ? ((totalUtilActual / totalUtilBudget) * 100) : 0;
 
+  // Stats Cards Data
+  const statsCards = [
+    { 
+      title: 'Total Contracts', 
+      value: contracts.length, 
+      icon: <ContractIcon sx={{ fontSize: 22 }} />, 
+      color: '#1976d2', 
+      bgColor: 'rgba(25, 118, 210, 0.1)',
+      subtitle: `${contractStatusCounts.Active} Active • ${contractStatusCounts.Completed} Completed`
+    },
+    { 
+      title: 'Contract Value', 
+      value: `RM ${totalContractValue.toLocaleString()}`, 
+      icon: <RevenueIcon sx={{ fontSize: 22 }} />, 
+      color: '#2e7d32', 
+      bgColor: 'rgba(46, 125, 50, 0.1)',
+      subtitle: `Remaining: ${remainingPercent}%`
+    },
+    { 
+      title: 'Total Tenders', 
+      value: tenders.length, 
+      icon: <TenderIcon sx={{ fontSize: 22 }} />, 
+      color: '#e65100', 
+      bgColor: 'rgba(230, 81, 0, 0.1)',
+      subtitle: `${tenders.filter(t => t.status === 'Awarded').length} Awarded`
+    },
+    { 
+      title: 'Overall Utilization', 
+      value: `${overallUtilization.toFixed(1)}%`, 
+      icon: <UtilizationIcon sx={{ fontSize: 22 }} />, 
+      color: overallUtilization >= 80 ? '#4caf50' : overallUtilization >= 60 ? '#ff9800' : '#f44336',
+      bgColor: overallUtilization >= 80 ? 'rgba(76, 175, 80, 0.1)' : overallUtilization >= 60 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+      subtitle: `${totalUtilActual.toFixed(1)} / ${totalUtilBudget.toFixed(1)} days`
+    },
+  ];
+
+  // ============ PRINT FUNCTION - IMPROVED ============
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    
+    try {
+      // Wait for charts to render completely
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const element = printRef.current;
+      if (!element) {
+        alert('No content to print');
+        setIsPrinting(false);
+        return;
+      }
+
+      // Get all sections
+      const sections = element.querySelectorAll('.print-section');
+      const itemsToPrint = sections.length > 0 ? sections : [element];
+      
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Please allow pop-ups for this site to print.');
+        setIsPrinting(false);
+        return;
+      }
+
+      const images = [];
+      
+      // Capture each section with better settings
+      for (let i = 0; i < itemsToPrint.length; i++) {
+        const item = itemsToPrint[i];
+        
+        // Force all charts to render
+        const canvases = item.querySelectorAll('canvas');
+        canvases.forEach(c => {
+          c.style.width = '100%';
+          c.style.height = 'auto';
+          c.style.display = 'block';
+        });
+
+        // Temporarily modify styles for capture
+        const originalStyles = {
+          height: item.style.height,
+          overflow: item.style.overflow,
+          maxHeight: item.style.maxHeight,
+        };
+        
+        item.style.height = 'auto';
+        item.style.overflow = 'visible';
+        item.style.maxHeight = 'none';
+        
+        // Ensure the item is fully visible
+        item.scrollIntoView({ behavior: 'auto', block: 'start' });
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const canvas = await html2canvas(item, {
+          scale: 2.5,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          width: item.scrollWidth,
+          height: item.scrollHeight,
+          windowWidth: item.scrollWidth,
+          windowHeight: item.scrollHeight,
+          onclone: (clonedDoc, clonedElement) => {
+            // Ensure all canvases are rendered in the clone
+            const clonedCanvases = clonedElement.querySelectorAll('canvas');
+            clonedCanvases.forEach(c => {
+              c.style.width = '100%';
+              c.style.height = 'auto';
+              c.style.display = 'block';
+            });
+          },
+          timeout: 30000,
+        });
+        
+        // Restore original styles
+        item.style.height = originalStyles.height;
+        item.style.overflow = originalStyles.overflow;
+        item.style.maxHeight = originalStyles.maxHeight;
+        
+        images.push(canvas.toDataURL('image/png', 1.0));
+      }
+
+      // Build HTML with all images
+      let imagesHtml = '';
+      images.forEach((imgData, index) => {
+        imagesHtml += `
+          <div style="page-break-after: ${index < images.length - 1 ? 'always' : 'avoid'}; 
+                      display: flex; 
+                      justify-content: center; 
+                      align-items: flex-start; 
+                      width: 100%; 
+                      min-height: 100vh; 
+                      background: white; 
+                      padding: 20px;">
+            <img src="${imgData}" 
+                 alt="Report Page ${index + 1}" 
+                 style="max-width: 100%; 
+                        height: auto; 
+                        object-fit: contain;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.05);" />
+          </div>
+        `;
+      });
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Fleet Report</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { 
+                margin: 0; 
+                padding: 0; 
+                background: #f0f0f0;
+                width: 100%;
+              }
+              img { 
+                max-width: 100%; 
+                height: auto;
+                display: block;
+              }
+              @media print {
+                body { 
+                  margin: 0; 
+                  padding: 0; 
+                  background: white; 
+                }
+                div { 
+                  page-break-after: avoid; 
+                  padding: 0 !important;
+                  min-height: 100vh;
+                }
+                img { 
+                  max-width: 100%; 
+                  height: auto;
+                  box-shadow: none !important;
+                }
+              }
+              @page {
+                margin: 0;
+                size: A4;
+              }
+            </style>
+          </head>
+          <body>
+            ${imagesHtml}
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                  window.close();
+                }, 2000);
+              };
+            <\/script>
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+    } catch (error) {
+      console.error('Error printing:', error);
+      alert('Error generating print. Please try again.');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   if (loading) return <LinearProgress />;
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+    <Box sx={{ fontFamily: '"Inter", sans-serif' }}>
+      {/* Header - Hidden on print */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#0a1929' }}>Executive Report</Typography>
-          <Typography variant="body2" color="textSecondary">Generated: {new Date().toLocaleString()} | Year: {selectedYear}</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>Executive Report</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif' }}>Generated: {new Date().toLocaleString()} | Year: {selectedYear}</Typography>
         </Box>
-        <Box>
+        <Box className="no-print">
           <FormControl size="small" sx={{ minWidth: 120, mr: 2 }}>
-            <InputLabel>Year</InputLabel>
-            <Select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} label="Year">
+            <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Year</InputLabel>
+            <Select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} label="Year" sx={{ fontFamily: '"Inter", sans-serif' }}>
               {[2024, 2025, 2026, 2027, 2028].map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
             </Select>
           </FormControl>
-          <Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()} sx={{ mr: 1, borderRadius: 2, textTransform: 'none' }}>Print</Button>
-          <Button variant="outlined" startIcon={<DownloadIcon />} sx={{ borderRadius: 2, textTransform: 'none' }}>Export</Button>
+          <Button 
+            className="no-print" 
+            variant="contained" 
+            startIcon={<PrintIcon />} 
+            onClick={handlePrint} 
+            disabled={isPrinting}
+            sx={{ mr: 1, borderRadius: 2, textTransform: 'none', fontFamily: '"Inter", sans-serif' }}
+          >
+            {isPrinting ? 'Preparing...' : 'Print'}
+          </Button>
+          <Button className="no-print" variant="outlined" startIcon={<DownloadIcon />} sx={{ borderRadius: 2, textTransform: 'none', fontFamily: '"Inter", sans-serif' }}>Export</Button>
         </Box>
       </Box>
 
-      {/* Summary Cards - 4 in a row */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase' }}>Total Contracts</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0a1929' }}>{contracts.length}</Typography>
-              <Typography variant="caption" color="textSecondary">{contractStatusCounts.Active} Active • {contractStatusCounts.Completed} Completed</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase' }}>Contract Value</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0a1929' }}>RM {totalContractValue.toLocaleString()}</Typography>
-              <Typography variant="caption" color="textSecondary">Remaining: {remainingPercent}%</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase' }}>Total Tenders</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0a1929' }}>{tenders.length}</Typography>
-              <Typography variant="caption" color="textSecondary">{tenders.filter(t => t.status === 'Awarded').length} Awarded</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-            <CardContent>
-              <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase' }}>Overall Utilization</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: overallUtilization >= 80 ? '#4caf50' : overallUtilization >= 60 ? '#ff9800' : '#f44336' }}>
-                {overallUtilization.toFixed(1)}%
-              </Typography>
-              <Typography variant="caption" color="textSecondary">{totalUtilActual.toFixed(1)} / {totalUtilBudget.toFixed(1)} days</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {/* ============ PRINT CONTENT ============ */}
+      <Box ref={printRef} sx={{ p: 3, bgcolor: '#ffffff' }}>
+        
+        {/* SECTION 1: Header + Stats Cards */}
+        <Box className="print-section" sx={{ mb: 3 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>Executive Report</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif', mb: 3 }}>Generated: {new Date().toLocaleString()} | Year: {selectedYear}</Typography>
 
-      {/* Invoice Summary - 4 cards in a row */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929', mb: 2 }}>Invoices Summary</Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={6} md={3}>
-            <Card sx={{ p: 2, bgcolor: '#f8f9fc', borderRadius: 2 }}>
-              <Typography variant="caption" color="textSecondary">Total Invoices</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>{filteredInvoices.length}</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Card sx={{ p: 2, bgcolor: '#f8f9fc', borderRadius: 2 }}>
-              <Typography variant="caption" color="textSecondary">Total Sale</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>RM {totalInvoiceAmount.toLocaleString()}</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Card sx={{ p: 2, bgcolor: '#f8f9fc', borderRadius: 2 }}>
-              <Typography variant="caption" color="textSecondary">Annual Budget</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>RM {totalBudgetAmount.toLocaleString()}</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Card sx={{ p: 2, bgcolor: '#f8f9fc', borderRadius: 2 }}>
-              <Typography variant="caption" color="textSecondary">Variance</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: invoiceVariance >= 0 ? '#4caf50' : '#f44336' }}>
-                {invoiceVariancePercent}%
-              </Typography>
-            </Card>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Invoice Charts - 2 charts side by side */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={7}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 380 }}>
-            <Bar data={invoiceStackedData} options={invoiceStackedOptions} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={5}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 380 }}>
-            <Line data={cumulativeLineData} options={cumulativeLineOptions} />
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Doughnut Charts - 3 in a row */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 320 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1 }}>Payment Status</Typography>
-            <Doughnut data={paymentDoughnutData} options={doughnutOptions} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 320 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1 }}>Contract Status</Typography>
-            <Doughnut data={contractDoughnutData} options={doughnutOptions} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 320 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1 }}>Tender Status</Typography>
-            <Doughnut data={tenderDoughnutData} options={doughnutOptions} />
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Contract & Tender Charts - 2 in a row */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 320 }}>
-            <Bar data={contractBarData} options={contractBarOptions} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 320 }}>
-            <Bar data={tenderBarData} options={tenderBarOptions} />
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Gantt Chart - Full width */}
-      {ganttData.length > 0 && (
-        <Paper sx={{ p: 3, mb: 4, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#0a1929', mb: 2 }}>Tender Timeline (Gantt Chart)</Typography>
-          <Box sx={{ width: '100%', overflow: 'hidden' }}>
-            <Box sx={{ width: '100%', position: 'relative' }}>
-              <Box sx={{ display: 'flex', borderBottom: '2px solid #e0e0e0', pb: 1, mb: 1 }}>
-                <Box sx={{ width: 150, flexShrink: 0, fontWeight: 600, fontSize: '0.7rem', color: '#666' }}>Client / Vessel</Box>
-                <Box sx={{ flex: 1, display: 'flex', position: 'relative', height: 20 }}>
-                  {ganttMonthLabels.map((label, index) => {
-                    const start = Math.max((label.date - minGanttDate) / (1000 * 60 * 60 * 24), 0);
-                    const end = Math.min((new Date(label.date.getFullYear(), label.date.getMonth() + 1, 1) - minGanttDate) / (1000 * 60 * 60 * 24), ganttTotalDays);
-                    const w = ((end - start) / ganttTotalDays) * 100;
-                    const l = (start / ganttTotalDays) * 100;
-                    return <Box key={index} sx={{ position: 'absolute', left: `${l}%`, width: `${w}%`, top: 0, textAlign: 'center', fontSize: '0.6rem', fontWeight: 600, color: '#666', borderRight: index < ganttMonthLabels.length - 1 ? '1px solid #eee' : 'none' }}>{label.month} {label.year}</Box>;
-                  })}
-                </Box>
-              </Box>
-              {ganttData.map((item, index) => {
-                const startOffset = Math.max((item.start - minGanttDate) / (1000 * 60 * 60 * 24), 0);
-                const barWidth = Math.max((item.duration / ganttTotalDays) * 100, 3);
-                const leftPos = (startOffset / ganttTotalDays) * 100;
-                const color = getStatusColor(item.status);
-                return (
-                  <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Box sx={{ width: 150, flexShrink: 0, pr: 1 }}>
-                      <Typography variant="body2" noWrap sx={{ fontWeight: 500, fontSize: '0.7rem' }}>{item.clientName}</Typography>
-                      <Typography variant="caption" color="textSecondary" noWrap sx={{ fontSize: '0.6rem' }}>{item.vesselNames}</Typography>
-                    </Box>
-                    <Box sx={{ flex: 1, height: 24, bgcolor: '#f5f5f5', borderRadius: 1, position: 'relative' }}>
-                      <Tooltip title={
-                        <Box sx={{ p: 1.5, minWidth: 200 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff', mb: 0.5 }}>{item.clientName || 'N/A'}</Typography>
-                          <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}><strong>Vessel:</strong> {item.vesselNames || 'N/A'}</Typography>
-                          <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}><strong>Rate:</strong> RM {item.rates || '0'}</Typography>
-                          <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}><strong>Period:</strong> {item.start?.toLocaleDateString() || 'N/A'} - {item.end?.toLocaleDateString() || 'N/A'}</Typography>
-                          <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}><strong>Duration:</strong> {item.duration || 0} days</Typography>
-                          <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block' }}><strong>Status:</strong> {item.status || 'N/A'}</Typography>
-                        </Box>
-                      } arrow placement="top">
-                        <Box sx={{ position: 'absolute', left: `${leftPos}%`, width: `${barWidth}%`, height: '100%', bgcolor: color, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.55rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', minWidth: barWidth > 5 ? 'auto' : '4px', '&:hover': { opacity: 0.8, transform: 'scaleY(1.1)' } }}>
-                          {barWidth > 12 ? `${item.duration}d` : ''}
-                        </Box>
-                      </Tooltip>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {statsCards.map((stat, index) => (
+              <Grid item xs={12} sm={6} md={3} key={index}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: 3,
+                    border: '1px solid #f0f2f5',
+                    p: 2.5,
+                    height: 100,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Avatar
+                      sx={{
+                        bgcolor: stat.bgColor,
+                        color: stat.color,
+                        width: 44,
+                        height: 44,
+                        borderRadius: 2,
+                      }}
+                    >
+                      {stat.icon}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: '#94a3b8',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          fontSize: '0.6rem',
+                          fontFamily: '"Inter", sans-serif',
+                        }}
+                      >
+                        {stat.title}
+                      </Typography>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: 700,
+                          color: stat.color,
+                          lineHeight: 1.2,
+                          fontSize: '1.3rem',
+                          whiteSpace: 'nowrap',
+                          fontFamily: '"Inter", sans-serif',
+                        }}
+                      >
+                        {stat.value}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: '#94a3b8',
+                          fontSize: '0.6rem',
+                          display: 'block',
+                          fontFamily: '"Inter", sans-serif',
+                        }}
+                      >
+                        {stat.subtitle}
+                      </Typography>
                     </Box>
                   </Box>
-                );
-              })}
-            </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* SECTION 2: Invoice Summary */}
+        <Paper className="print-section" sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #f0f2f5' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>Invoices Summary</Typography>
+          
+          <Box sx={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 3,
+          }}>
+            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <InvoiceIcon sx={{ fontSize: 18, color: '#1976d2' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+                  Total Invoices
+                </Typography>
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>{filteredInvoices.length}</Typography>
+            </Card>
+
+            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <RevenueIcon sx={{ fontSize: 18, color: '#2e7d32' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+                  Total Sale
+                </Typography>
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>RM {totalInvoiceAmount.toLocaleString()}</Typography>
+            </Card>
+
+            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <RevenueIcon sx={{ fontSize: 18, color: '#e65100' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+                  Annual Budget
+                </Typography>
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>RM {totalBudgetAmount.toLocaleString()}</Typography>
+            </Card>
+
+            <Card sx={{ 
+              p: 0,
+              borderRadius: 2,
+              border: `1px solid ${invoiceVariance >= 0 ? '#c8e6c9' : '#ffcdd2'}`,
+              bgcolor: invoiceVariance >= 0 ? '#f0f7f4' : '#fef0f2',
+              width: '100%',
+              overflow: 'hidden',
+            }}>
+              <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0, height: '100%' }}>
+                <Box sx={{ 
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 2,
+                  borderRight: `1px solid ${invoiceVariance >= 0 ? '#c8e6c9' : '#ffcdd2'}`,
+                  bgcolor: invoiceVariance >= 0 ? 'rgba(76, 175, 80, 0.05)' : 'rgba(244, 67, 54, 0.05)',
+                }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.55rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
+                    Variance
+                  </Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.6rem', color: invoiceVariance >= 0 ? '#4caf50' : '#f44336', fontFamily: '"Inter", sans-serif', lineHeight: 1.2 }}>
+                    {invoiceVariancePercent}%
+                  </Typography>
+                </Box>
+                <Box sx={{ 
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 2,
+                  bgcolor: invoiceVariance >= 0 ? 'rgba(76, 175, 80, 0.03)' : 'rgba(244, 67, 54, 0.03)',
+                }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.55rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
+                    Variance Amount
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', color: invoiceVariance >= 0 ? '#2e7d32' : '#c62828', fontFamily: '"Inter", sans-serif' }}>
+                    {invoiceVariance >= 0 ? '+' : ''}RM {invoiceVariance.toLocaleString()}
+                  </Typography>
+                </Box>
+              </Box>
+            </Card>
           </Box>
         </Paper>
-      )}
 
-      {/* Utilization Chart - Full width */}
-      {utilMonths.length > 0 && utilVessels.length > 0 && (
-        <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', height: 420 }}>
-          <Bar data={utilizationStackedData} options={utilizationStackedOptions} />
-        </Paper>
-      )}
+        {/* SECTION 3: Invoice Charts */}
+        <Box className="print-section" sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr',
+          gap: 3,
+          mb: 4,
+        }}>
+          <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 400, width: '100%' }}>
+            <Bar data={invoiceStackedData} options={invoiceStackedOptions} />
+          </Paper>
+          <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 400, width: '100%' }}>
+            <Line data={cumulativeLineData} options={cumulativeLineOptions} />
+          </Paper>
+        </Box>
 
-      {/* Footer */}
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Typography variant="caption" color="textSecondary">
-          DJ Group Chartering Database • Report Generated on {new Date().toLocaleString()}
-        </Typography>
+        {/* SECTION 4: Doughnut Charts */}
+        <Grid container spacing={3} className="print-section" sx={{ mb: 4 }}>
+          <Grid item xs={12} md={4}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 320 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1, fontFamily: '"Inter", sans-serif' }}>Payment Status</Typography>
+              <Doughnut data={paymentDoughnutData} options={doughnutOptions} />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 320 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1, fontFamily: '"Inter", sans-serif' }}>Contract Status</Typography>
+              <Doughnut data={contractDoughnutData} options={doughnutOptions} />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 320 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'center', mb: 1, fontFamily: '"Inter", sans-serif' }}>Tender Status</Typography>
+              <Doughnut data={tenderDoughnutData} options={doughnutOptions} />
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* SECTION 5: Contract & Tender Charts */}
+        <Grid container spacing={3} className="print-section" sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 320 }}>
+              <Bar data={contractBarData} options={contractBarOptions} />
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 320 }}>
+              <Bar data={tenderBarData} options={tenderBarOptions} />
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* SECTION 6: Gantt Chart */}
+        {ganttData.length > 0 && (
+          <Box className="print-section" sx={{ mb: 4 }}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', overflow: 'visible' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>
+                Tender Timeline (Gantt Chart)
+                <Chip label={`${ganttData.length} tenders`} size="small" sx={{ ml: 1, fontFamily: '"Inter", sans-serif' }} />
+              </Typography>
+              
+              <Box sx={{ width: '100%', overflow: 'visible', position: 'relative' }}>
+                <Box sx={{ display: 'flex', borderBottom: '2px solid #E5E7EB', pb: 1, mb: 1, position: 'relative' }}>
+                  <Box sx={{ width: 150, flexShrink: 0, fontWeight: 600, fontSize: '0.7rem', color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>
+                    Client / Vessel
+                  </Box>
+                  <Box sx={{ flex: 1, position: 'relative', height: 10 }} />
+                </Box>
+
+                {ganttBars.map((item, index) => {
+                  const color = getStatusColor(item.status);
+                  return (
+                    <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1.5, position: 'relative' }}>
+                      <Box sx={{ width: 150, flexShrink: 0, pr: 1 }}>
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 500, fontSize: '0.7rem', fontFamily: '"Inter", sans-serif', color: '#111827' }}>
+                          {item.clientName}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" noWrap sx={{ fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+                          {item.vesselNames}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ flex: 1, height: 28, bgcolor: '#F3F4F6', borderRadius: 1, position: 'relative', overflow: 'visible' }}>
+                        <Tooltip
+                          title={
+                            <Box sx={{ p: 1.5, minWidth: 200 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff', mb: 0.5, fontFamily: '"Inter", sans-serif' }}>
+                                {item.clientName || 'N/A'}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+                                <strong>Vessel:</strong> {item.vesselNames || 'N/A'}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+                                <strong>Rate:</strong> RM {item.rates || '0'}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+                                <strong>Period:</strong> {item.start?.toLocaleDateString() || 'N/A'} - {item.end?.toLocaleDateString() || 'N/A'}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+                                <strong>Duration:</strong> {item.duration || 0} days
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+                                <strong>Status:</strong> {item.status || 'N/A'}
+                              </Typography>
+                            </Box>
+                          }
+                          arrow
+                          placement="top"
+                          TransitionComponent={Zoom}
+                          PopperProps={{
+                            sx: {
+                              '& .MuiTooltip-tooltip': {
+                                bgcolor: '#111827',
+                                borderRadius: 2,
+                                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                                padding: '12px 16px',
+                                maxWidth: 280,
+                              },
+                              '& .MuiTooltip-arrow': {
+                                color: '#111827',
+                              }
+                            }
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: `${Math.max(item.leftPos, 0)}%`,
+                              width: `${Math.min(Math.max(item.barWidth, 2), 100 - Math.max(item.leftPos, 0))}%`,
+                              height: '100%',
+                              bgcolor: color,
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              fontSize: '0.5rem',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              minWidth: '4px',
+                              fontFamily: '"Inter", sans-serif',
+                              zIndex: 2,
+                              '&:hover': {
+                                opacity: 0.85,
+                                transform: 'scaleY(1.08)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                              }
+                            }}
+                          >
+                            {item.barWidth > 8 ? `${item.duration}d` : ''}
+                          </Box>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Paper>
+          </Box>
+        )}
+
+        {/* SECTION 7: Utilization Chart */}
+        {utilMonths.length > 0 && utilVessels.length > 0 && (
+          <Box className="print-section" sx={{ mb: 4 }}>
+            <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #f0f2f5', height: 420, width: '100%' }}>
+              <Bar data={utilizationStackedData} options={utilizationStackedOptions} />
+            </Paper>
+          </Box>
+        )}
+
+        {/* Footer */}
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Typography variant="caption" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif' }}>
+            DJ Group Chartering Database • Report Generated on {new Date().toLocaleString()}
+          </Typography>
+        </Box>
       </Box>
     </Box>
   );

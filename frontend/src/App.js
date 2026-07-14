@@ -31,6 +31,11 @@ import {
   Menu,
   MenuItem,
   Avatar,
+  TextField,
+  Button,
+  InputAdornment,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -44,16 +49,18 @@ import {
   Assessment as ReportsIcon,
   AccountCircle,
   Logout as LogoutIcon,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 
 const drawerWidth = 260;
 
 // DJ Group Color Scheme
 const colors = {
-  primary: '#0a1628',      // Dark navy
-  primaryLight: '#1a2a4a',  // Lighter navy
-  gold: '#c9a84c',          // Gold accent
-  goldLight: '#e8d5a3',     // Light gold
+  primary: '#0a1628',
+  primaryLight: '#1a2a4a',
+  gold: '#c9a84c',
+  goldLight: '#e8d5a3',
   white: '#ffffff',
   textLight: 'rgba(255,255,255,0.7)',
   textWhite: '#ffffff',
@@ -75,6 +82,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const location = useLocation();
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
@@ -84,6 +92,7 @@ function App() {
         (username === 'chartering' && password === 'chartering123')) {
       setIsAuthenticated(true);
       setUser(username);
+      setSnackbar({ open: true, message: `Welcome ${username}!`, severity: 'success' });
       return true;
     }
     return false;
@@ -93,21 +102,21 @@ function App() {
     setIsAuthenticated(false);
     setUser(null);
     setAnchorEl(null);
+    setSnackbar({ open: true, message: 'Logged out successfully', severity: 'info' });
   };
 
   const handleMenu = (event) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
+  const handleCloseSnackbar = () => setSnackbar({ ...snackbar, open: false });
 
   const drawer = (
     <Box sx={{ height: '100%', bgcolor: colors.primary }}>
-      {/* Brand Header with Logo */}
       <Toolbar sx={{ 
         background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
         borderBottom: `1px solid rgba(201, 168, 76, 0.2)`,
         py: 2,
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          {/* Logo Image */}
           <Box
             component="img"
             src="/images/DJ Group Logo.png"
@@ -119,7 +128,6 @@ function App() {
               filter: 'brightness(0) invert(1)',
             }}
             onError={(e) => {
-              // Fallback if image doesn't load
               e.target.style.display = 'none';
             }}
           />
@@ -202,7 +210,6 @@ function App() {
         ))}
       </List>
       
-      {/* Footer with user info */}
       <Box sx={{ 
         position: 'absolute', 
         bottom: 0, 
@@ -242,7 +249,6 @@ function App() {
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
       
-      {/* Top App Bar */}
       <AppBar
         position="fixed"
         sx={{
@@ -273,7 +279,6 @@ function App() {
           </Box>
           
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {/* Gold accent indicator */}
             <Box sx={{ 
               width: 6, 
               height: 6, 
@@ -281,6 +286,28 @@ function App() {
               borderRadius: '50%',
               display: { xs: 'none', sm: 'block' },
             }} />
+            
+            {/* ===== LOGOUT BUTTON - FIXED ===== */}
+            <Button
+              variant="outlined"
+              startIcon={<LogoutIcon />}
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                borderColor: '#e2e8f0',
+                color: '#64748b',
+                px: 2,
+                py: 0.8,
+                '&:hover': {
+                  borderColor: '#ef4444',
+                  color: '#ef4444',
+                  backgroundColor: 'rgba(239,68,68,0.04)',
+                }
+              }}
+            >
+              Logout
+            </Button>
             
             <Tooltip title="Account">
               <IconButton onClick={handleMenu} size="small">
@@ -329,7 +356,6 @@ function App() {
         </Toolbar>
       </AppBar>
       
-      {/* Sidebar Navigation */}
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
         <Drawer
           variant="temporary"
@@ -365,7 +391,6 @@ function App() {
         </Drawer>
       </Box>
       
-      {/* Main Content */}
       <Box
         component="main"
         sx={{
@@ -390,14 +415,26 @@ function App() {
           </Routes>
         </Container>
       </Box>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} variant="filled">
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
 
-// Login Component
+// ===== LOGIN COMPONENT WITH HIDDEN PASSWORD =====
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const colors = {
@@ -409,9 +446,15 @@ function Login({ onLogin }) {
     e.preventDefault();
     if (onLogin(username, password)) {
       setError('');
+      setUsername('');
+      setPassword('');
     } else {
       setError('Invalid username or password');
     }
+  };
+
+  const handleTogglePassword = () => {
+    setShowPassword(!showPassword);
   };
 
   return (
@@ -424,7 +467,6 @@ function Login({ onLogin }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Decorative gold accent */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -454,7 +496,6 @@ function Login({ onLogin }) {
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Logo */}
         <Box sx={{ mb: 3 }}>
           <Box
             component="img"
@@ -512,15 +553,30 @@ function Login({ onLogin }) {
               },
             }}
           />
+          
+          {/* ===== PASSWORD FIELD WITH HIDE/SHOW ===== */}
           <TextField
             fullWidth
             label="Password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             margin="normal"
             required
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={handleTogglePassword}
+                    edge="end"
+                    sx={{ color: '#64748b' }}
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
             sx={{ 
               '& .MuiOutlinedInput-root': { borderRadius: 2 },
               '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
@@ -531,11 +587,13 @@ function Login({ onLogin }) {
               },
             }}
           />
+          
           {error && (
             <Typography color="error" sx={{ mt: 1 }}>
               {error}
             </Typography>
           )}
+          
           <Button
             type="submit"
             fullWidth
@@ -557,6 +615,7 @@ function Login({ onLogin }) {
           >
             Sign In
           </Button>
+          
           <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 2 }}>
             Demo: admin / admin123
           </Typography>
@@ -565,9 +624,6 @@ function Login({ onLogin }) {
     </Box>
   );
 }
-
-// Need to import TextField and Button for Login
-import { TextField, Button } from '@mui/material';
 
 function AppWrapper() {
   return (
