@@ -15,15 +15,12 @@ services:
     autoDeploy: true
 
   # Frontend Static Site - FIXED
-  - type: static
+  - type: web
     name: fleet-frontend
+    runtime: static
     plan: free
     buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: ./frontend/build
+    startCommand: npx serve -s build
     envVars:
       - key: REACT_APP_API_URL
         value: https://fleet-backend.onrender.com/api
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
