@@ -58,105 +58,6 @@ ChartJS.register(
 
 const API_URL = 'http://localhost:5005/api';
 
-// ============ STAT CARD COMPONENT - FIXED ============
-const StatCard = ({ title, value, icon, color, bgColor, subtitle, chart, height = 140 }) => {
-  // Ensure value is displayed correctly - FIXES THE BLANK ISSUE
-  const displayValue = (value !== undefined && value !== null) ? value : 0;
-
-  return (
-    <Paper
-      elevation={0}
-      sx={{
-        borderRadius: 3,
-        border: '1px solid #f1f5f9',
-        p: 3,
-        transition: 'all 0.2s ease-in-out',
-        '&:hover': {
-          boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-          borderColor: 'transparent',
-        },
-        height: height,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 3,
-          bgcolor: color,
-          opacity: 0.3,
-        }}
-      />
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 600,
-              color: '#94a3b8',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              fontSize: '0.6rem',
-              display: 'block',
-              mb: 0.5,
-            }}
-          >
-            {title}
-          </Typography>
-          <Typography
-            variant="h5"
-            sx={{
-              fontWeight: 700,
-              color: '#0f172a',
-              fontSize: '1.5rem',
-              lineHeight: 1.2,
-              mb: 0.25,
-            }}
-          >
-            {displayValue}
-          </Typography>
-          {subtitle && (
-            <Typography
-              variant="caption"
-              sx={{
-                color: '#94a3b8',
-                fontSize: '0.65rem',
-                display: 'block',
-              }}
-            >
-              {subtitle}
-            </Typography>
-          )}
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          {chart}
-          <Avatar
-            sx={{
-              bgcolor: bgColor || color,
-              color: '#fff',
-              width: 40,
-              height: 40,
-              borderRadius: 2,
-              opacity: 0.9,
-            }}
-          >
-            {icon}
-          </Avatar>
-        </Box>
-      </Box>
-    </Paper>
-  );
-};
-
 function Dashboard() {
   const [stats, setStats] = useState({
     totalVessels: 0,
@@ -189,7 +90,6 @@ function Dashboard() {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/dashboard`);
-      // Debug log to verify data
       console.log('Dashboard Data:', response.data);
       setStats(response.data);
       
@@ -249,90 +149,6 @@ function Dashboard() {
     );
   }
 
-  const mainStats = [
-    {
-      title: 'Total Vessels',
-      value: stats.totalVessels,
-      icon: <VesselIcon sx={{ fontSize: 22 }} />,
-      color: '#1976d2',
-      bgColor: 'rgba(25, 118, 210, 0.08)',
-      subtitle: 'Total fleet',
-    },
-    {
-      title: 'Active Vessels',
-      value: stats.activeVessels,
-      icon: <CheckCircleIcon sx={{ fontSize: 22 }} />,
-      color: '#0d9488',
-      bgColor: 'rgba(13, 148, 136, 0.08)',
-      subtitle: `${stats.soldVessels || 0} sold · ${stats.maintenanceVessels || 0} in maintenance`,
-    },
-    {
-      title: 'Total Contracts',
-      value: stats.totalContracts,
-      icon: <ContractIcon sx={{ fontSize: 22 }} />,
-      color: '#7c3aed',
-      bgColor: 'rgba(124, 58, 237, 0.08)',
-    },
-    {
-      title: 'Total Revenue',
-      value: `RM ${stats.totalRevenue.toLocaleString()}`,
-      icon: <RevenueIcon sx={{ fontSize: 22 }} />,
-      color: '#2e7d32',
-      bgColor: 'rgba(46, 125, 50, 0.08)',
-      subtitle: 'All time',
-      chart: (
-        <Box sx={{ height: 40, width: 80 }}>
-          <Line data={revenueChartData} options={revenueChartOptions} />
-        </Box>
-      ),
-    },
-  ];
-
-  const secondaryStats = [
-    {
-      title: 'Total Invoices',
-      value: stats.totalInvoices,
-      icon: <InvoiceIcon sx={{ fontSize: 22 }} />,
-      color: '#f59e0b',
-      bgColor: 'rgba(245, 158, 11, 0.08)',
-      subtitle: `${stats.paidInvoices || 0} paid · ${stats.submittedInvoices || 0} submitted`,
-    },
-    {
-      title: 'Collection Rate',
-      value: `${stats.collectionRate?.toFixed(1) || 0}%`,
-      icon: stats.collectionRate >= 80 ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <TrendingDownIcon sx={{ fontSize: 22 }} />,
-      color: stats.collectionRate >= 80 ? '#2e7d32' : '#d32f2f',
-      bgColor: stats.collectionRate >= 80 ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.08)',
-      subtitle: `${stats.paidInvoices || 0} paid`,
-    },
-    {
-      title: 'Pending Invoices',
-      value: stats.submittedInvoices || 0,
-      icon: <PendingIcon sx={{ fontSize: 22 }} />,
-      color: '#f59e0b',
-      bgColor: 'rgba(245, 158, 11, 0.08)',
-      subtitle: 'Awaiting payment',
-    },
-    {
-      title: 'Overdue Invoices',
-      value: stats.overdueInvoices || 0,
-      icon: <OverdueIcon sx={{ fontSize: 22 }} />,
-      color: '#ef4444',
-      bgColor: 'rgba(239, 68, 68, 0.08)',
-      subtitle: 'Past due',
-    },
-  ];
-
-  const utilStats = [
-    {
-      title: 'YTD Utilization',
-      value: `${stats.ytdUtilization?.toFixed(1) || 0}%`,
-      icon: <UtilizationIcon sx={{ fontSize: 22 }} />,
-      color: stats.ytdUtilization >= 80 ? '#2e7d32' : stats.ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f',
-      bgColor: stats.ytdUtilization >= 80 ? 'rgba(46, 125, 50, 0.08)' : stats.ytdUtilization >= 60 ? 'rgba(255, 152, 0, 0.08)' : 'rgba(244, 67, 54, 0.08)',
-    },
-  ];
-
   return (
     <Box sx={{ fontFamily: '"Inter", -apple-system, sans-serif' }}>
       {/* Welcome Section */}
@@ -379,54 +195,309 @@ function Dashboard() {
         </Tooltip>
       </Box>
 
-      {/* Main Stats - 4 Cards */}
+      {/* ============ SIMPLIFIED STATS CARDS ============ */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {mainStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <StatCard
-              title={stat.title}
-              value={stat.value}
-              icon={stat.icon}
-              color={stat.color}
-              bgColor={stat.bgColor}
-              subtitle={stat.subtitle}
-              chart={stat.chart}
-            />
-          </Grid>
-        ))}
+        {/* Total Vessels */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 3,
+              height: 120,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(25, 118, 210, 0.1)', color: '#1976d2', width: 44, height: 44, borderRadius: 2 }}>
+                <VesselIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.6rem' }}>
+                  Total Vessels
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.totalVessels}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.65rem' }}>
+                  Total fleet
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Active Vessels */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 3,
+              height: 120,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(13, 148, 136, 0.1)', color: '#0d9488', width: 44, height: 44, borderRadius: 2 }}>
+                <CheckCircleIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.6rem' }}>
+                  Active Vessels
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.activeVessels}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.65rem' }}>
+                  {stats.soldVessels || 0} sold · {stats.maintenanceVessels || 0} in maintenance
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Total Contracts - FIXED */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 3,
+              height: 120,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', width: 44, height: 44, borderRadius: 2 }}>
+                <ContractIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.6rem' }}>
+                  Total Contracts
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.totalContracts !== undefined ? stats.totalContracts : 0}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Total Revenue */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 3,
+              height: 120,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(46, 125, 50, 0.1)', color: '#2e7d32', width: 44, height: 44, borderRadius: 2 }}>
+                <RevenueIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.6rem' }}>
+                  Total Revenue
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.3rem', lineHeight: 1.2 }}>
+                  RM {stats.totalRevenue?.toLocaleString() || 0}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.65rem' }}>
+                  All time
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
       </Grid>
 
       {/* Invoice Stats - 4 Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {secondaryStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <StatCard
-              title={stat.title}
-              value={stat.value}
-              icon={stat.icon}
-              color={stat.color}
-              bgColor={stat.bgColor}
-              subtitle={stat.subtitle}
-              height={120}
-            />
-          </Grid>
-        ))}
+        {/* Total Invoices */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', width: 44, height: 44, borderRadius: 2 }}>
+                <InvoiceIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem' }}>
+                  Total Invoices
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.totalInvoices}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.6rem' }}>
+                  {stats.paidInvoices || 0} paid · {stats.submittedInvoices || 0} submitted
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Collection Rate */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: stats.collectionRate >= 80 ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)', color: stats.collectionRate >= 80 ? '#2e7d32' : '#d32f2f', width: 44, height: 44, borderRadius: 2 }}>
+                {stats.collectionRate >= 80 ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <TrendingDownIcon sx={{ fontSize: 22 }} />}
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem' }}>
+                  Collection Rate
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.collectionRate?.toFixed(1) || 0}%
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.6rem' }}>
+                  {stats.paidInvoices || 0} paid
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Pending Invoices */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', width: 44, height: 44, borderRadius: 2 }}>
+                <PendingIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem' }}>
+                  Pending Invoices
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.submittedInvoices || 0}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.6rem' }}>
+                  Awaiting payment
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Overdue Invoices */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', width: 44, height: 44, borderRadius: 2 }}>
+                <OverdueIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem' }}>
+                  Overdue Invoices
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.overdueInvoices || 0}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.6rem' }}>
+                  Past due
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
       </Grid>
 
-      {/* Utilization Stats - Only YTD Card */}
+      {/* YTD Utilization */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {utilStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={4} key={index}>
-            <StatCard
-              title={stat.title}
-              value={stat.value}
-              icon={stat.icon}
-              color={stat.color}
-              bgColor={stat.bgColor}
-              height={120}
-            />
-          </Grid>
-        ))}
+        <Grid item xs={12} sm={6} md={4}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f1f5f9',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ 
+                bgcolor: stats.ytdUtilization >= 80 ? 'rgba(46, 125, 50, 0.1)' : stats.ytdUtilization >= 60 ? 'rgba(237, 108, 2, 0.1)' : 'rgba(244, 67, 54, 0.1)', 
+                color: stats.ytdUtilization >= 80 ? '#2e7d32' : stats.ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f', 
+                width: 44, 
+                height: 44, 
+                borderRadius: 2 
+              }}>
+                <UtilizationIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem' }}>
+                  YTD Utilization
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.ytdUtilization?.toFixed(1) || 0}%
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
       </Grid>
 
       {/* Footer */}
