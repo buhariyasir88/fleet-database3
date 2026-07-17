@@ -263,7 +263,7 @@ function Dashboard() {
     },
     {
       title: 'Total Contracts',
-      value: stats.totalContracts,
+      value: stats.totalContracts || 0,  // ← FIXED: Added fallback
       icon: <ContractIcon sx={{ fontSize: 22 }} />,
       color: '#7c3aed',
       bgColor: 'rgba(124, 58, 237, 0.08)',
