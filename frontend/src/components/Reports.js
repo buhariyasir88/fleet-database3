@@ -57,7 +57,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'https://fleet-database3.onrender.com/api';
+const API_URL = 'http://localhost:5005/api';
 
 function Reports() {
   const [loading, setLoading] = useState(true);
@@ -148,6 +148,33 @@ function Reports() {
     else contractStatusCounts.Pending++;
   });
 
+  // ============ DISTINCT VESSEL COLORS ============
+  const colors = [
+    'rgba(25,118,210,0.7)',   // Blue - MV Jati Sipadan
+    'rgba(46,125,50,0.7)',    // Green - MV Jati Manukan
+    'rgba(237,108,2,0.7)',    // Orange - MV Jati Ten
+    'rgba(156,39,176,0.7)',   // Purple - MV Jati Nine
+    'rgba(211,47,47,0.7)',    // Red - MV Jati Eight
+    'rgba(121,85,72,0.7)',    // Brown - MV Jati Seven
+    'rgba(233,30,99,0.7)',    // Pink - MV Jati Six
+    'rgba(255,193,7,0.7)',    // Amber (extra)
+    'rgba(96,125,139,0.7)',   // Blue Grey (extra)
+    'rgba(139,195,74,0.7)',   // Light Green (extra)
+  ];
+
+  const borderColors = [
+    'rgba(25,118,210,1)',
+    'rgba(46,125,50,1)',
+    'rgba(237,108,2,1)',
+    'rgba(156,39,176,1)',
+    'rgba(211,47,47,1)',
+    'rgba(121,85,72,1)',
+    'rgba(233,30,99,1)',
+    'rgba(255,193,7,1)',
+    'rgba(96,125,139,1)',
+    'rgba(139,195,74,1)',
+  ];
+
   // ============ INVOICE CHART ============
   const invVesselSet = new Set();
   filteredInvoices.forEach(inv => {
@@ -181,9 +208,6 @@ function Reports() {
   const finalMonths = Array.from(allMonthsSet).sort((a, b) => monthsOrder.indexOf(a) - monthsOrder.indexOf(b));
 
   if (finalMonths.length === 0) finalMonths.push('No Data');
-
-  const colors = ['rgba(25,118,210,0.7)', 'rgba(76,175,80,0.7)', 'rgba(255,152,0,0.7)', 'rgba(156,39,176,0.7)'];
-  const borderColors = ['rgba(25,118,210,1)', 'rgba(76,175,80,1)', 'rgba(255,152,0,1)', 'rgba(156,39,176,1)'];
 
   const invDatasets = invVessels.map((vessel, i) => ({
     label: vessel,
@@ -573,11 +597,38 @@ function Reports() {
 
   const utilMonths = Object.keys(utilData).sort((a, b) => monthsOrder.indexOf(a) - monthsOrder.indexOf(b));
 
+  // ============ UTILIZATION COLORS - UPDATED ============
+  const utilColors = [
+    'rgba(25,118,210,0.7)',   // Blue - MV Jati Sipadan
+    'rgba(46,125,50,0.7)',    // Green - MV Jati Manukan
+    'rgba(237,108,2,0.7)',    // Orange - MV Jati Ten
+    'rgba(156,39,176,0.7)',   // Purple - MV Jati Nine
+    'rgba(211,47,47,0.7)',    // Red - MV Jati Eight
+    'rgba(121,85,72,0.7)',    // Brown - MV Jati Seven
+    'rgba(233,30,99,0.7)',    // Pink - MV Jati Six
+    'rgba(255,193,7,0.7)',    // Amber (extra)
+    'rgba(96,125,139,0.7)',   // Blue Grey (extra)
+    'rgba(139,195,74,0.7)',   // Light Green (extra)
+  ];
+
+  const utilBorderColors = [
+    'rgba(25,118,210,1)',
+    'rgba(46,125,50,1)',
+    'rgba(237,108,2,1)',
+    'rgba(156,39,176,1)',
+    'rgba(211,47,47,1)',
+    'rgba(121,85,72,1)',
+    'rgba(233,30,99,1)',
+    'rgba(255,193,7,1)',
+    'rgba(96,125,139,1)',
+    'rgba(139,195,74,1)',
+  ];
+
   const utilDatasets = utilVessels.map((vessel, i) => ({
     label: vessel,
     data: utilMonths.map(m => utilData[m]?.[vessel] || 0),
-    backgroundColor: colors[i % colors.length],
-    borderColor: borderColors[i % borderColors.length],
+    backgroundColor: utilColors[i % utilColors.length],
+    borderColor: utilBorderColors[i % utilBorderColors.length],
     borderWidth: 1,
     borderRadius: 2,
   }));
@@ -687,12 +738,11 @@ function Reports() {
     },
   ];
 
-  // ============ PRINT FUNCTION - IMPROVED ============
+  // ============ PRINT FUNCTION ============
   const handlePrint = async () => {
     setIsPrinting(true);
     
     try {
-      // Wait for charts to render completely
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const element = printRef.current;
@@ -702,7 +752,6 @@ function Reports() {
         return;
       }
 
-      // Get all sections
       const sections = element.querySelectorAll('.print-section');
       const itemsToPrint = sections.length > 0 ? sections : [element];
       
@@ -715,11 +764,9 @@ function Reports() {
 
       const images = [];
       
-      // Capture each section with better settings
       for (let i = 0; i < itemsToPrint.length; i++) {
         const item = itemsToPrint[i];
         
-        // Force all charts to render
         const canvases = item.querySelectorAll('canvas');
         canvases.forEach(c => {
           c.style.width = '100%';
@@ -727,7 +774,6 @@ function Reports() {
           c.style.display = 'block';
         });
 
-        // Temporarily modify styles for capture
         const originalStyles = {
           height: item.style.height,
           overflow: item.style.overflow,
@@ -738,7 +784,6 @@ function Reports() {
         item.style.overflow = 'visible';
         item.style.maxHeight = 'none';
         
-        // Ensure the item is fully visible
         item.scrollIntoView({ behavior: 'auto', block: 'start' });
         
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -754,7 +799,6 @@ function Reports() {
           windowWidth: item.scrollWidth,
           windowHeight: item.scrollHeight,
           onclone: (clonedDoc, clonedElement) => {
-            // Ensure all canvases are rendered in the clone
             const clonedCanvases = clonedElement.querySelectorAll('canvas');
             clonedCanvases.forEach(c => {
               c.style.width = '100%';
@@ -765,7 +809,6 @@ function Reports() {
           timeout: 30000,
         });
         
-        // Restore original styles
         item.style.height = originalStyles.height;
         item.style.overflow = originalStyles.overflow;
         item.style.maxHeight = originalStyles.maxHeight;
@@ -773,7 +816,6 @@ function Reports() {
         images.push(canvas.toDataURL('image/png', 1.0));
       }
 
-      // Build HTML with all images
       let imagesHtml = '';
       images.forEach((imgData, index) => {
         imagesHtml += `
@@ -862,7 +904,7 @@ function Reports() {
 
   return (
     <Box sx={{ fontFamily: '"Inter", sans-serif' }}>
-      {/* Header - Hidden on print */}
+      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>Executive Report</Typography>
@@ -970,7 +1012,7 @@ function Reports() {
           </Grid>
         </Box>
 
-        {/* SECTION 2: Invoice Summary - FIXED WITH 5 CARDS */}
+        {/* SECTION 2: Invoice Summary */}
         <Paper className="print-section" sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #f0f2f5' }}>
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>Invoices Summary</Typography>
           
