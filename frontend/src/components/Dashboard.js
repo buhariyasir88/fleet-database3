@@ -162,7 +162,7 @@ function Dashboard() {
     maintenanceVessels: 0,
     totalClients: 0,
     activeContracts: 0,
-    totalContracts: 0,  // ← ADDED: Total contracts
+    totalContracts: 0,
     totalInvoices: 0,
     totalRevenue: 0,
     pendingInvoices: 0,
@@ -262,12 +262,11 @@ function Dashboard() {
       subtitle: `${stats.soldVessels || 0} sold · ${stats.maintenanceVessels || 0} in maintenance`,
     },
     {
-      title: 'Total Contracts',  // Changed from 'Active Contracts'
-      value: stats.totalContracts,  // ← NOW FETCHES FROM BACKEND
+      title: 'Total Contracts',
+      value: stats.totalContracts,
       icon: <ContractIcon sx={{ fontSize: 22 }} />,
       color: '#7c3aed',
       bgColor: 'rgba(124, 58, 237, 0.08)',
-      // subtitle removed
     },
     {
       title: 'Total Revenue',
@@ -319,7 +318,6 @@ function Dashboard() {
     },
   ];
 
-  // Utilization Stats - Only YTD
   const utilStats = [
     {
       title: 'YTD Utilization',
