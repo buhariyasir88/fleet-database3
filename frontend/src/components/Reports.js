@@ -72,13 +72,12 @@ function Reports() {
   const printRef = useRef();
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // ============ YTD UTILIZATION CALCULATION ============
+  // ============ YTD UTILIZATION CALCULATION - FIXED ============
   const calculateYTDUtilization = (utilizations, year) => {
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonthIndex = today.getMonth();
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const currentMonthName = months[currentMonthIndex];
     
     // Filter utilizations for the given year
     const yearData = utilizations.filter(u => u.year === year);
@@ -86,19 +85,27 @@ function Reports() {
     // Determine which months to include (up to previous month for current year)
     let monthsToInclude = [];
     if (year === currentYear) {
+      // For current year: include months from January to previous month (exclude current month)
       monthsToInclude = months.slice(0, currentMonthIndex);
     } else {
+      // For past years: include all months
       monthsToInclude = months;
     }
     
+    // If no months to include, return 0
     if (monthsToInclude.length === 0) return 0;
     
     let totalActual = 0;
     let totalPossibleDays = 0;
     
     monthsToInclude.forEach(month => {
+      // Get data for this month
       const monthData = yearData.filter(u => u.month === month);
       
+      // If no data for this month, skip
+      if (monthData.length === 0) return;
+      
+      // Count unique vessels with data for this month
       const vesselIds = new Set();
       monthData.forEach(u => {
         if (u.vessel) {
@@ -108,16 +115,23 @@ function Reports() {
       });
       
       const vesselCount = vesselIds.size || 0;
+      
+      // If no vessels, skip
       if (vesselCount === 0) return;
       
+      // Get days in this month
       const daysInMonth = new Date(year, months.indexOf(month) + 1, 0).getDate();
+      
+      // Total possible days = vesselCount × daysInMonth
       totalPossibleDays += vesselCount * daysInMonth;
       
+      // Sum actual days
       monthData.forEach(u => {
         totalActual += u.actualDays || 0;
       });
     });
     
+    // Calculate percentage
     if (totalPossibleDays === 0) return 0;
     return Math.min(100, (totalActual / totalPossibleDays) * 100);
   };
@@ -738,36 +752,43 @@ function Reports() {
   };
 
   // ============ STATS - FIXED ============
+  // Total Contracts - use contracts.length from the fetched data
+  const totalContracts = contracts.length;
+  
+  // Contract Value
   const totalContractValue = contracts.reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingContractValue = contracts.filter(c => getContractStatus(c) === 'Active').reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingPercent = totalContractValue > 0 ? ((remainingContractValue / totalContractValue) * 100).toFixed(1) : 0;
   
-  // FIXED: Total Contracts - use contracts.length
-  const totalContracts = contracts.length;
-  
-  // FIXED: Overall Utilization - use YTD calculation (same as Utilization section)
+  // FIXED: Overall Utilization - Use the SAME calculation as Utilization section
+  // Use the full utilizations array (not filtered by year) and pass the selected year
   const overallUtilization = calculateYTDUtilization(utilizations, selectedYear);
   
-  // Calculate actual and possible days for display
+  // Calculate YTD actual and possible days for display (matching Utilization section)
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonthIndex = today.getMonth();
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const currentMonthName = months[currentMonthIndex];
   
-  const yearData = utilizations.filter(u => u.year === selectedYear);
-  const monthsToInclude = [];
+  // Get months to include (up to previous month for current year)
+  let monthsToIncludeDisplay = [];
   if (selectedYear === currentYear) {
-    monthsToInclude.push(...months.slice(0, currentMonthIndex));
+    monthsToIncludeDisplay = months.slice(0, currentMonthIndex);
   } else {
-    monthsToInclude.push(...months);
+    monthsToIncludeDisplay = months;
   }
   
   let ytdActualDays = 0;
   let ytdPossibleDays = 0;
   
-  monthsToInclude.forEach(month => {
-    const monthData = yearData.filter(u => u.month === month);
+  // Use ALL utilizations for the selected year
+  const yearDataAll = utilizations.filter(u => u.year === selectedYear);
+  
+  monthsToIncludeDisplay.forEach(month => {
+    const monthData = yearDataAll.filter(u => u.month === month);
+    if (monthData.length === 0) return;
+    
+    // Count unique vessels
     const vesselIds = new Set();
     monthData.forEach(u => {
       if (u.vessel) {
@@ -776,13 +797,13 @@ function Reports() {
       }
     });
     const vesselCount = vesselIds.size || 0;
-    if (vesselCount > 0) {
-      const daysInMonth = new Date(selectedYear, months.indexOf(month) + 1, 0).getDate();
-      ytdPossibleDays += vesselCount * daysInMonth;
-      monthData.forEach(u => {
-        ytdActualDays += u.actualDays || 0;
-      });
-    }
+    if (vesselCount === 0) return;
+    
+    const daysInMonth = new Date(selectedYear, months.indexOf(month) + 1, 0).getDate();
+    ytdPossibleDays += vesselCount * daysInMonth;
+    monthData.forEach(u => {
+      ytdActualDays += u.actualDays || 0;
+    });
   });
 
   const totalInvoiceAmount = filteredInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
