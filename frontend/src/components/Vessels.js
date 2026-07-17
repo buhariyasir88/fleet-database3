@@ -42,9 +42,10 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Pending as PendingIcon,
+  Folder as FolderIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 
-// Use environment variable for API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Vessels() {
@@ -72,6 +73,16 @@ function Vessels() {
   const [statusDialog, setStatusDialog] = useState(false);
   const [statusVessel, setStatusVessel] = useState(null);
   const [newStatus, setNewStatus] = useState('Active');
+  
+  // ============ NEW: OneDrive Link Dialog ============
+  const [linkDialog, setLinkDialog] = useState(false);
+  const [linkVessel, setLinkVessel] = useState(null);
+  const [linkName, setLinkName] = useState('');
+  const [linkPath, setLinkPath] = useState('');
+  
+  // ============ NEW: Show OneDrive Path Dialog ============
+  const [pathDialog, setPathDialog] = useState(false);
+  const [pathVessel, setPathVessel] = useState(null);
 
   useEffect(() => {
     fetchVessels();
@@ -212,22 +223,70 @@ function Vessels() {
     }
   };
 
-  // ============ FIXED DOWNLOAD FUNCTION ============
+  // ============ DOWNLOAD FUNCTION ============
   const handleDownload = (doc) => {
     if (!doc || !doc.filePath) {
       showSnackbar('Document not found', 'error');
       return;
     }
     
-    // Extract just the filename from the path
+    // Check if it's a OneDrive path or link
+    if (doc.filePath.includes('OneDrive') || doc.filePath.includes('C:\\') || doc.filePath.includes('http')) {
+      // Open the file directly (OneDrive path or link)
+      window.open(doc.filePath, '_blank');
+      return;
+    }
+    
+    // Otherwise, use the standard Render upload
     const fileName = doc.filePath.split('/').pop().split('\\').pop();
-    
-    // Build the download URL
-    const baseUrl = API_URL.replace('/api', '');
-    const downloadUrl = `${baseUrl}/uploads/${encodeURIComponent(fileName)}`;
-    
-    // Open in new tab
+    const downloadUrl = `https://fleet-database3.onrender.com/uploads/${encodeURIComponent(fileName)}`;
     window.open(downloadUrl, '_blank');
+  };
+
+  // ============ NEW: Get OneDrive Path for Vessel ============
+  const getOneDrivePath = (vessel) => {
+    const vesselName = vessel.name.replace('MV ', '').trim();
+    return `C:\\Users\\User\\OneDrive - Dinastia Jati Sdn Bhd\\2024\\7. VESSEL CERT & DOC\\uploads\\${vesselName}.pdf`;
+  };
+
+  // ============ NEW: Open OneDrive Folder ============
+  const openOneDriveFolder = () => {
+    const folderPath = 'file:///C:/Users/User/OneDrive%20-%20Dinastia%20Jati%20Sdn%20Bhd/2024/7.%20VESSEL%20CERT%20%26%20DOC/uploads/';
+    window.open(folderPath, '_blank');
+  };
+
+  // ============ NEW: Link Document Dialog ============
+  const handleOpenLinkDialog = (vessel) => {
+    setLinkVessel(vessel);
+    setLinkName('Vessel Spec');
+    setLinkPath(getOneDrivePath(vessel));
+    setLinkDialog(true);
+  };
+
+  const handleLinkSubmit = async () => {
+    if (!linkPath.trim()) {
+      showSnackbar('Please enter a file path', 'error');
+      return;
+    }
+
+    try {
+      await axios.post(`${API_URL}/vessels/${linkVessel._id}/documents`, {
+        name: linkName,
+        filePath: linkPath
+      });
+      showSnackbar('Document linked successfully! 🎉');
+      setLinkDialog(false);
+      fetchVessels();
+    } catch (error) {
+      console.error('Error linking document:', error);
+      showSnackbar('Error linking document', 'error');
+    }
+  };
+
+  // ============ NEW: Show Path Dialog ============
+  const handleShowPath = (vessel) => {
+    setPathVessel(vessel);
+    setPathDialog(true);
   };
 
   const handleOpenStatusDialog = (vessel) => {
@@ -253,7 +312,7 @@ function Vessels() {
     }
   };
 
-  // ============ STATUS STYLES - PILL SHAPE ============
+  // ============ STATUS STYLES ============
   const getStatusStyles = (status) => {
     switch (status) {
       case 'Active':
@@ -602,7 +661,6 @@ function Vessels() {
         }}
       >
         <Table sx={{ borderCollapse: 'collapse' }}>
-          {/* Header */}
           <TableHead>
             <TableRow sx={{ 
               bgcolor: '#F9FAFB',
@@ -767,10 +825,7 @@ function Vessels() {
                     borderBottom: index < vessels.length - 1 ? '1px solid #F3F4F6' : 'none',
                   }}
                 >
-                  <TableCell sx={{ 
-                    py: 3,
-                    border: 'none',
-                  }}>
+                  <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar 
                         sx={{ 
@@ -861,7 +916,7 @@ function Vessels() {
                     {vessel.totalSeat || '-'}
                   </TableCell>
                   
-                  {/* Status - Pill Shape */}
+                  {/* Status */}
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Chip
                       label={vessel.status || 'Available'}
@@ -921,8 +976,51 @@ function Vessels() {
                           <UploadIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
+                      
+                      {/* NEW: Link Document Button */}
+                      <Tooltip title="Link Document from OneDrive">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenLinkDialog(vessel)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#22c55e' }
+                          }}
+                        >
+                          <LinkIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {/* NEW: Open OneDrive Folder Button */}
+                      <Tooltip title="Open OneDrive Folder">
+                        <IconButton 
+                          size="small" 
+                          onClick={openOneDriveFolder}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#f59e0b' }
+                          }}
+                        >
+                          <FolderIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {/* NEW: Show Path Button */}
+                      <Tooltip title="Show OneDrive Path">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleShowPath(vessel)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#3b82f6' }
+                          }}
+                        >
+                          <FolderIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
                   </TableCell>
+                  
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Tooltip title="Edit Vessel">
@@ -957,6 +1055,334 @@ function Vessels() {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* ============ NEW: Link Document Dialog ============ */}
+      <Dialog 
+        open={linkDialog} 
+        onClose={() => setLinkDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LinkIcon color="primary" />
+            Link OneDrive Document
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              {linkVessel?.name}
+            </Typography>
+            <TextField
+              label="Document Name"
+              value={linkName}
+              onChange={(e) => setLinkName(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="OneDrive Path or Link"
+              value={linkPath}
+              onChange={(e) => setLinkPath(e.target.value)}
+              fullWidth
+              multiline
+              rows={2}
+              placeholder="Paste the OneDrive file path here..."
+              helperText={`Example: C:\\Users\\User\\OneDrive - Dinastia Jati Sdn Bhd\\2024\\7. VESSEL CERT & DOC\\uploads\\${linkVessel?.name?.replace('MV ', '')}.pdf`}
+            />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button 
+                size="small" 
+                variant="outlined"
+                onClick={() => setLinkPath(getOneDrivePath(linkVessel))}
+              >
+                Auto-fill Path
+              </Button>
+              <Button 
+                size="small" 
+                variant="outlined"
+                onClick={openOneDriveFolder}
+              >
+                Open OneDrive Folder
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLinkDialog(false)}>Cancel</Button>
+          <Button onClick={handleLinkSubmit} variant="contained">Link Document</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ============ NEW: Show Path Dialog ============ */}
+      <Dialog 
+        open={pathDialog} 
+        onClose={() => setPathDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FolderIcon color="primary" />
+            OneDrive Document Path
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              File Path for {pathVessel?.name}:
+            </Typography>
+            <Paper sx={{ p: 2, mt: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  wordBreak: 'break-all', 
+                  fontFamily: 'monospace',
+                  fontSize: '0.7rem'
+                }}
+              >
+                {pathVessel && getOneDrivePath(pathVessel)}
+              </Typography>
+            </Paper>
+            <Typography variant="caption" color="textSecondary" sx={{ mt: 2, display: 'block' }}>
+              💡 Copy this path to your file explorer or use the "Link Document" button to add it.
+            </Typography>
+            <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+              <Button 
+                variant="outlined"
+                onClick={() => {
+                  navigator.clipboard.writeText(getOneDrivePath(pathVessel));
+                  showSnackbar('Path copied to clipboard!', 'success');
+                }}
+                startIcon={<FolderIcon />}
+              >
+                Copy Path
+              </Button>
+              <Button 
+                variant="contained"
+                onClick={() => {
+                  window.open(getOneDrivePath(pathVessel).replace(/\\/g, '/'), '_blank');
+                }}
+                startIcon={<FolderIcon />}
+              >
+                Open File
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPathDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Upload Dialog */}
+      <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Upload Document</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 1 }}>
+            <InputLabel>Document Type</InputLabel>
+            <Select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              label="Document Type"
+            >
+              <MenuItem value="Vessel Spec">Vessel Spec</MenuItem>
+              <MenuItem value="GA Plan">GA Plan</MenuItem>
+            </Select>
+          </FormControl>
+          <Box sx={{ mt: 2 }}>
+            <input type="file" onChange={handleFileChange} style={{ width: '100%' }} />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialog(false)}>Cancel</Button>
+          <Button onClick={handleUpload} variant="contained">Upload</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status Dialog */}
+      <Dialog 
+        open={statusDialog} 
+        onClose={handleCloseStatusDialog} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            padding: 0,
+            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+            border: '1px solid #E5E7EB',
+          }
+        }}
+      >
+        <Box sx={{ 
+          p: 3,
+          pb: 1.5,
+          bgcolor: '#F9FAFB',
+          borderBottom: '1px solid #E5E7EB',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar sx={{ bgcolor: '#1976d2', width: 36, height: 36, borderRadius: '12px' }}>
+              <VesselIcon sx={{ color: 'white', fontSize: 18 }} />
+            </Avatar>
+            <Box>
+              <Typography 
+                variant="h6" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#111827', 
+                  lineHeight: 1.2,
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                Update Status
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: '#6B7280',
+                  fontFamily: '"Inter", sans-serif',
+                }}
+              >
+                {statusVessel?.name || ''}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <DialogContent sx={{ p: 3 }}>
+          <FormControl fullWidth>
+            <InputLabel 
+              sx={{ 
+                fontFamily: '"Inter", sans-serif',
+                color: '#6B7280',
+              }}
+            >
+              Status
+            </InputLabel>
+            <Select
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value)}
+              label="Status"
+              sx={{ 
+                borderRadius: 2,
+                bgcolor: '#F9FAFB',
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover': { bgcolor: '#F3F4F6' },
+                '&.Mui-focused': { 
+                  bgcolor: 'white',
+                  boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                  '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                },
+                '& .MuiSelect-select': {
+                  fontFamily: '"Inter", sans-serif',
+                  color: '#111827',
+                  fontSize: '0.875rem',
+                  py: 1.5,
+                },
+              }}
+            >
+              <MenuItem value="Active">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <CheckCircleIcon sx={{ color: '#22c55e' }} />
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
+                      Active
+                    </Typography>
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
+                      Vessel is currently in operation
+                    </Typography>
+                  </Box>
+                </Box>
+              </MenuItem>
+              <MenuItem value="Available">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <CheckCircleIcon sx={{ color: '#3b82f6' }} />
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
+                      Available
+                    </Typography>
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
+                      Vessel is ready for charter
+                    </Typography>
+                  </Box>
+                </Box>
+              </MenuItem>
+              <MenuItem value="Sold">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <CancelIcon sx={{ color: '#ef4444' }} />
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
+                      Sold
+                    </Typography>
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
+                      Vessel has been sold
+                    </Typography>
+                  </Box>
+                </Box>
+              </MenuItem>
+              <MenuItem value="Under Maintenance">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <PendingIcon sx={{ color: '#f59e0b' }} />
+                  <Box>
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
+                      Under Maintenance
+                    </Typography>
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
+                      Vessel is being serviced
+                    </Typography>
+                  </Box>
+                </Box>
+              </MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+
+        <DialogActions sx={{ 
+          p: 3,
+          pt: 1,
+          gap: 2,
+          bgcolor: '#F9FAFB',
+          borderTop: '1px solid #E5E7EB',
+        }}>
+          <Button 
+            onClick={handleCloseStatusDialog} 
+            variant="outlined"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 3,
+              py: 1,
+              borderColor: '#E5E7EB',
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+              '&:hover': { borderColor: '#9CA3AF', bgcolor: 'transparent' }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleStatusUpdate} 
+            variant="contained"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 4,
+              py: 1,
+              fontFamily: '"Inter", sans-serif',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+              }
+            }}
+          >
+            Update Status
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add/Edit Dialog */}
       <Dialog 
@@ -1520,214 +1946,7 @@ function Vessels() {
         </DialogActions>
       </Dialog>
 
-      {/* Status Dialog */}
-      <Dialog 
-        open={statusDialog} 
-        onClose={handleCloseStatusDialog} 
-        maxWidth="xs" 
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: '16px',
-            padding: 0,
-            overflow: 'hidden',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
-            border: '1px solid #E5E7EB',
-          }
-        }}
-      >
-        <Box sx={{ 
-          p: 3,
-          pb: 1.5,
-          bgcolor: '#F9FAFB',
-          borderBottom: '1px solid #E5E7EB',
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ bgcolor: '#1976d2', width: 36, height: 36, borderRadius: '12px' }}>
-              <VesselIcon sx={{ color: 'white', fontSize: 18 }} />
-            </Avatar>
-            <Box>
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  fontWeight: 600, 
-                  color: '#111827', 
-                  lineHeight: 1.2,
-                  fontFamily: '"Inter", sans-serif',
-                }}
-              >
-                Update Status
-              </Typography>
-              <Typography 
-                variant="caption" 
-                sx={{ 
-                  color: '#6B7280',
-                  fontFamily: '"Inter", sans-serif',
-                }}
-              >
-                {statusVessel?.name || ''}
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        <DialogContent sx={{ p: 3 }}>
-          <FormControl fullWidth>
-            <InputLabel 
-              sx={{ 
-                fontFamily: '"Inter", sans-serif',
-                color: '#6B7280',
-              }}
-            >
-              Status
-            </InputLabel>
-            <Select
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value)}
-              label="Status"
-              sx={{ 
-                borderRadius: 2,
-                bgcolor: '#F9FAFB',
-                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '&:hover': { bgcolor: '#F3F4F6' },
-                '&.Mui-focused': { 
-                  bgcolor: 'white',
-                  boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
-                  '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
-                },
-                '& .MuiSelect-select': {
-                  fontFamily: '"Inter", sans-serif',
-                  color: '#111827',
-                  fontSize: '0.875rem',
-                  py: 1.5,
-                },
-              }}
-            >
-              <MenuItem value="Active">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CheckCircleIcon sx={{ color: '#22c55e' }} />
-                  <Box>
-                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
-                      Active
-                    </Typography>
-                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
-                      Vessel is currently in operation
-                    </Typography>
-                  </Box>
-                </Box>
-              </MenuItem>
-              <MenuItem value="Available">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CheckCircleIcon sx={{ color: '#3b82f6' }} />
-                  <Box>
-                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
-                      Available
-                    </Typography>
-                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
-                      Vessel is ready for charter
-                    </Typography>
-                  </Box>
-                </Box>
-              </MenuItem>
-              <MenuItem value="Sold">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CancelIcon sx={{ color: '#ef4444' }} />
-                  <Box>
-                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
-                      Sold
-                    </Typography>
-                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
-                      Vessel has been sold
-                    </Typography>
-                  </Box>
-                </Box>
-              </MenuItem>
-              <MenuItem value="Under Maintenance">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <PendingIcon sx={{ color: '#f59e0b' }} />
-                  <Box>
-                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
-                      Under Maintenance
-                    </Typography>
-                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
-                      Vessel is being serviced
-                    </Typography>
-                  </Box>
-                </Box>
-              </MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-
-        <DialogActions sx={{ 
-          p: 3,
-          pt: 1,
-          gap: 2,
-          bgcolor: '#F9FAFB',
-          borderTop: '1px solid #E5E7EB',
-        }}>
-          <Button 
-            onClick={handleCloseStatusDialog} 
-            variant="outlined"
-            sx={{ 
-              borderRadius: 2,
-              textTransform: 'none',
-              px: 3,
-              py: 1,
-              borderColor: '#E5E7EB',
-              color: '#6B7280',
-              fontFamily: '"Inter", sans-serif',
-              '&:hover': { borderColor: '#9CA3AF', bgcolor: 'transparent' }
-            }}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleStatusUpdate} 
-            variant="contained"
-            sx={{ 
-              borderRadius: 2,
-              textTransform: 'none',
-              px: 4,
-              py: 1,
-              fontFamily: '"Inter", sans-serif',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
-              }
-            }}
-          >
-            Update Status
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Upload Document</DialogTitle>
-        <DialogContent>
-          <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel>Document Type</InputLabel>
-            <Select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              label="Document Type"
-            >
-              <MenuItem value="Vessel Spec">Vessel Spec</MenuItem>
-              <MenuItem value="GA Plan">GA Plan</MenuItem>
-            </Select>
-          </FormControl>
-          <Box sx={{ mt: 2 }}>
-            <input type="file" onChange={handleFileChange} style={{ width: '100%' }} />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialog(false)}>Cancel</Button>
-          <Button onClick={handleUpload} variant="contained">Upload</Button>
-        </DialogActions>
-      </Dialog>
-
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
