@@ -57,7 +57,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'http://localhost:5005/api';
+const API_URL = 'https://fleet-database3.onrender.com/api';
 
 function Reports() {
   const [loading, setLoading] = useState(true);

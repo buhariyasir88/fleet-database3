@@ -54,7 +54,7 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:5005/api';
+const API_URL = 'https://fleet-database3.onrender.com/api';
 
 function Invoices() {
   const [invoices, setInvoices] = useState([]);

@@ -46,7 +46,7 @@ import {
   Cancel as SoldIcon,
 } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:5005/api';
+const API_URL = 'https://fleet-database3.onrender.com/api';
 
 function Vessels() {
   const [vessels, setVessels] = useState([]);
