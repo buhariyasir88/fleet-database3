@@ -56,7 +56,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'https://fleet-database3.onrender.com/api';
+const API_URL = 'http://localhost:5005/api';
 
 // ============ STAT CARD COMPONENT ============
 const StatCard = ({ title, value, icon, color, bgColor, subtitle, chart, height = 140 }) => {
@@ -162,6 +162,7 @@ function Dashboard() {
     maintenanceVessels: 0,
     totalClients: 0,
     activeContracts: 0,
+    totalContracts: 0,  // ← ADDED: Total contracts
     totalInvoices: 0,
     totalRevenue: 0,
     pendingInvoices: 0,
@@ -243,9 +244,6 @@ function Dashboard() {
     );
   }
 
-  // Calculate total contracts (all contracts, not just active)
-  const totalContracts = 81; // Hardcoded to match your data
-
   const mainStats = [
     {
       title: 'Total Vessels',
@@ -264,8 +262,8 @@ function Dashboard() {
       subtitle: `${stats.soldVessels || 0} sold · ${stats.maintenanceVessels || 0} in maintenance`,
     },
     {
-      title: 'Total Contracts',  // ✅ Changed from 'Active Contracts'
-      value: totalContracts,      // ✅ Using hardcoded 81
+      title: 'Total Contracts',  // Changed from 'Active Contracts'
+      value: stats.totalContracts,  // ← NOW FETCHES FROM BACKEND
       icon: <ContractIcon sx={{ fontSize: 22 }} />,
       color: '#7c3aed',
       bgColor: 'rgba(124, 58, 237, 0.08)',
@@ -321,7 +319,7 @@ function Dashboard() {
     },
   ];
 
-  // ============ YTD UTILIZATION ONLY - NO SUBTITLE ============
+  // Utilization Stats - Only YTD
   const utilStats = [
     {
       title: 'YTD Utilization',
@@ -329,7 +327,6 @@ function Dashboard() {
       icon: <UtilizationIcon sx={{ fontSize: 22 }} />,
       color: stats.ytdUtilization >= 80 ? '#2e7d32' : stats.ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f',
       bgColor: stats.ytdUtilization >= 80 ? 'rgba(46, 125, 50, 0.08)' : stats.ytdUtilization >= 60 ? 'rgba(255, 152, 0, 0.08)' : 'rgba(244, 67, 54, 0.08)',
-      // subtitle removed
     },
   ];
 
@@ -413,7 +410,7 @@ function Dashboard() {
         ))}
       </Grid>
 
-      {/* YTD Utilization - Only 1 Card (No subtitle) */}
+      {/* Utilization Stats - Only YTD Card */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {utilStats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={4} key={index}>
