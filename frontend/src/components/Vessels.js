@@ -42,11 +42,10 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Pending as PendingIcon,
-  CheckCircle as ActiveIcon,
-  Cancel as SoldIcon,
 } from '@mui/icons-material';
 
-const API_URL = 'https://fleet-database3.onrender.com/api';
+// Use environment variable for API URL
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Vessels() {
   const [vessels, setVessels] = useState([]);
@@ -213,9 +212,22 @@ function Vessels() {
     }
   };
 
+  // ============ FIXED DOWNLOAD FUNCTION ============
   const handleDownload = (doc) => {
-    const fileName = doc.filePath.split('\\').pop();
-    window.open(`http://localhost:5005/uploads/${fileName}`, '_blank');
+    if (!doc || !doc.filePath) {
+      showSnackbar('Document not found', 'error');
+      return;
+    }
+    
+    // Extract just the filename from the path
+    const fileName = doc.filePath.split('/').pop().split('\\').pop();
+    
+    // Build the download URL
+    const baseUrl = API_URL.replace('/api', '');
+    const downloadUrl = `${baseUrl}/uploads/${encodeURIComponent(fileName)}`;
+    
+    // Open in new tab
+    window.open(downloadUrl, '_blank');
   };
 
   const handleOpenStatusDialog = (vessel) => {
@@ -277,406 +289,11 @@ function Vessels() {
     }
   };
 
-  // ============ FILTER VESSELS ============
-  const activeVesselsList = vessels.filter(v => v.status === 'Active' || v.status === 'Available');
-  const soldVesselsList = vessels.filter(v => v.status === 'Sold');
-  const maintenanceVesselsList = vessels.filter(v => v.status === 'Under Maintenance');
-
   // ============ STATS ============
   const totalVessels = vessels.length;
   const totalDocuments = vessels.reduce((sum, v) => sum + (v.documents?.length || 0), 0);
   const fleetTypes = new Set(vessels.map(v => v.indType)).size;
   const activeVessels = vessels.filter(v => v.status === 'Active' || v.status === 'Available').length;
-
-  // ============ RENDER TABLE FUNCTION ============
-  const renderVesselTable = (vesselList, title, statusType, icon) => {
-    if (vesselList.length === 0) {
-      return (
-        <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            {icon}
-            <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827' }}>
-              {title}
-            </Typography>
-            <Chip label="0" size="small" sx={{ bgcolor: '#F3F4F6', fontWeight: 500 }} />
-          </Box>
-          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: '#F9FAFB' }}>
-            <Typography color="textSecondary">No {title.toLowerCase()} vessels</Typography>
-          </Paper>
-        </Box>
-      );
-    }
-
-    return (
-      <Box sx={{ mb: 4 }}>
-        {/* Section Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          {icon}
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827' }}>
-            {title}
-          </Typography>
-          <Chip 
-            label={vesselList.length} 
-            size="small" 
-            sx={{ 
-              bgcolor: statusType === 'active' ? '#22c55e' : '#ef4444',
-              color: 'white',
-              fontWeight: 600,
-            }} 
-          />
-        </Box>
-
-        {/* Table */}
-        <TableContainer 
-          component={Paper} 
-          sx={{ 
-            borderRadius: 3, 
-            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-            overflow: 'hidden',
-            border: statusType === 'active' ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(239,68,68,0.2)',
-          }}
-        >
-          <Table sx={{ borderCollapse: 'collapse' }}>
-            {/* Header */}
-            <TableHead>
-              <TableRow sx={{ 
-                bgcolor: statusType === 'active' ? '#F0FDF4' : '#FEF2F2',
-                borderBottom: '1px solid #E5E7EB',
-              }}>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Vessel
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  IMO
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Type
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Flag
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Year
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  GRT
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Speed
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Seats
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Status
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Docs
-                </TableCell>
-                <TableCell sx={{ 
-                  fontWeight: 700, 
-                  color: '#111827', 
-                  fontSize: '0.7rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em',
-                  fontFamily: '"Inter", sans-serif',
-                  py: 2.5,
-                  border: 'none',
-                }}>
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            
-            <TableBody>
-              {vesselList.map((vessel, index) => (
-                <TableRow 
-                  key={vessel._id} 
-                  hover
-                  sx={{ 
-                    '&:hover': { bgcolor: '#F9FAFB' },
-                    transition: 'background-color 0.2s',
-                    borderBottom: index < vesselList.length - 1 ? '1px solid #F3F4F6' : 'none',
-                  }}
-                >
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar 
-                        sx={{ 
-                          width: 32, 
-                          height: 32, 
-                          bgcolor: statusType === 'active' ? '#22c55e' : '#ef4444',
-                          borderRadius: 1.5,
-                        }}
-                      >
-                        <VesselIcon sx={{ fontSize: 16, color: 'white' }} />
-                      </Avatar>
-                      <Typography sx={{ 
-                        fontWeight: 500, 
-                        color: '#111827',
-                        fontFamily: '"Inter", sans-serif',
-                        fontSize: '0.875rem',
-                      }}>
-                        {vessel.name}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.imoNumber || '-'}
-                  </TableCell>
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Chip 
-                      label={vessel.indType || 'N/A'} 
-                      size="small" 
-                      sx={{ 
-                        bgcolor: '#F3F4F6', 
-                        fontWeight: 500,
-                        fontSize: '0.7rem',
-                        color: '#6B7280',
-                        borderRadius: 1,
-                        fontFamily: '"Inter", sans-serif',
-                      }} 
-                    />
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.flag || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.year || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.grt || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.speed || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.totalSeat || '-'}
-                  </TableCell>
-                  
-                  {/* Status - Pill Shape */}
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Chip
-                      label={vessel.status || 'Available'}
-                      size="small"
-                      onClick={() => handleOpenStatusDialog(vessel)}
-                      sx={{ 
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.7rem',
-                        fontFamily: '"Inter", sans-serif',
-                        borderRadius: '9999px',
-                        height: 28,
-                        px: 1.5,
-                        bgcolor: getStatusStyles(vessel.status).bgcolor,
-                        color: getStatusStyles(vessel.status).color,
-                        border: `1px solid ${getStatusStyles(vessel.status).borderColor}`,
-                        '&:hover': {
-                          opacity: 0.8,
-                        },
-                        '& .MuiChip-label': {
-                          px: 1.5,
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                      {vessel.documents?.map((doc, index) => (
-                        <Chip
-                          key={index}
-                          label={doc.name}
-                          size="small"
-                          onClick={() => handleDownload(doc)}
-                          sx={{ 
-                            m: 0.2,
-                            cursor: 'pointer',
-                            bgcolor: '#EEF2FF',
-                            color: '#4338CA',
-                            fontSize: '0.6rem',
-                            height: 20,
-                            fontFamily: '"Inter", sans-serif',
-                            '&:hover': { bgcolor: '#C7D2FE' }
-                          }}
-                        />
-                      ))}
-                      <Tooltip title="Upload Document">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleUploadDialog(vessel)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#1976d2' }
-                          }}
-                        >
-                          <UploadIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Tooltip title="Edit Vessel">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleOpenDialog(vessel)} 
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#1976d2', bgcolor: 'rgba(25,118,210,0.08)' }
-                          }}
-                        >
-                          <EditIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Vessel">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleDelete(vessel._id)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' }
-                          }}
-                        >
-                          <DeleteIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Box>
-    );
-  };
 
   if (loading) {
     return <LinearProgress />;
@@ -851,14 +468,74 @@ function Vessels() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Avatar
                 sx={{
-                  bgcolor: 'rgba(34, 197, 94, 0.1)',
-                  color: '#22c55e',
+                  bgcolor: 'rgba(230, 81, 0, 0.1)',
+                  color: '#e65100',
                   width: 44,
                   height: 44,
                   borderRadius: 2,
                 }}
               >
-                <ActiveIcon sx={{ fontSize: 22 }} />
+                <VesselIcon sx={{ fontSize: 22 }} />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Fleet Types
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 700,
+                    color: '#111827',
+                    lineHeight: 1.2,
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {fleetTypes}
+                </Typography>
+              </Box>
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: '1px solid #f0f2f5',
+              p: 2.5,
+              height: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              '&:hover': {
+                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+                borderColor: 'transparent',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar
+                sx={{
+                  bgcolor: 'rgba(76, 175, 80, 0.1)',
+                  color: '#4caf50',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                }}
+              >
+                <VesselIcon sx={{ fontSize: 22 }} />
               </Avatar>
               <Box>
                 <Typography
@@ -889,66 +566,6 @@ function Vessels() {
             </Box>
           </Paper>
         </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 3,
-              border: '1px solid #f0f2f5',
-              p: 2.5,
-              height: 100,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              transition: 'all 0.2s',
-              '&:hover': {
-                boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
-                borderColor: 'transparent',
-              },
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar
-                sx={{
-                  bgcolor: 'rgba(239, 68, 68, 0.1)',
-                  color: '#ef4444',
-                  width: 44,
-                  height: 44,
-                  borderRadius: 2,
-                }}
-              >
-                <SoldIcon sx={{ fontSize: 22 }} />
-              </Avatar>
-              <Box>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: '#94a3b8',
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                    fontSize: '0.6rem',
-                    fontFamily: '"Inter", sans-serif',
-                  }}
-                >
-                  Sold Vessels
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{
-                    fontWeight: 700,
-                    color: '#111827',
-                    lineHeight: 1.2,
-                    fontFamily: '"Inter", sans-serif',
-                  }}
-                >
-                  {soldVesselsList.length}
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
-        </Grid>
       </Grid>
 
       {/* Add Button */}
@@ -974,32 +591,373 @@ function Vessels() {
         </Button>
       </Box>
 
-      {/* ============ ACTIVE VESSELS TABLE ============ */}
-      {renderVesselTable(
-        activeVesselsList, 
-        'Active Vessels', 
-        'active',
-        <ActiveIcon sx={{ color: '#22c55e', fontSize: 28 }} />
-      )}
+      {/* Table */}
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          borderRadius: 3, 
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+          overflow: 'hidden',
+          border: 'none',
+        }}
+      >
+        <Table sx={{ borderCollapse: 'collapse' }}>
+          {/* Header */}
+          <TableHead>
+            <TableRow sx={{ 
+              bgcolor: '#F9FAFB',
+              borderBottom: '1px solid #E5E7EB',
+            }}>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Vessel
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                IMO
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Type
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Flag
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Year
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                GRT
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Speed
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Seats
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Status
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Docs
+              </TableCell>
+              <TableCell sx={{ 
+                fontWeight: 700, 
+                color: '#111827', 
+                fontSize: '0.7rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em',
+                fontFamily: '"Inter", sans-serif',
+                py: 2.5,
+                border: 'none',
+              }}>
+                Actions
+              </TableCell>
+            </TableRow>
+          </TableHead>
+          
+          <TableBody>
+            {vessels.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={11} align="center" sx={{ py: 6 }}>
+                  <VesselIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
+                  <Typography color="textSecondary" variant="h6" sx={{ fontWeight: 500 }}>
+                    No vessels found
+                  </Typography>
+                  <Typography color="textSecondary" variant="body2">
+                    Click "Add New Vessel" to get started
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              vessels.map((vessel, index) => (
+                <TableRow 
+                  key={vessel._id} 
+                  hover
+                  sx={{ 
+                    '&:hover': { bgcolor: '#F9FAFB' },
+                    transition: 'background-color 0.2s',
+                    borderBottom: index < vessels.length - 1 ? '1px solid #F3F4F6' : 'none',
+                  }}
+                >
+                  <TableCell sx={{ 
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar 
+                        sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: '#1976d2',
+                          borderRadius: 1.5,
+                        }}
+                      >
+                        <VesselIcon sx={{ fontSize: 16, color: 'white' }} />
+                      </Avatar>
+                      <Typography sx={{ 
+                        fontWeight: 500, 
+                        color: '#111827',
+                        fontFamily: '"Inter", sans-serif',
+                        fontSize: '0.875rem',
+                      }}>
+                        {vessel.name}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.imoNumber || '-'}
+                  </TableCell>
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Chip 
+                      label={vessel.indType || 'N/A'} 
+                      size="small" 
+                      sx={{ 
+                        bgcolor: '#F3F4F6', 
+                        fontWeight: 500,
+                        fontSize: '0.7rem',
+                        color: '#6B7280',
+                        borderRadius: 1,
+                        fontFamily: '"Inter", sans-serif',
+                      }} 
+                    />
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.flag || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.year || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.grt || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.speed || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.totalSeat || '-'}
+                  </TableCell>
+                  
+                  {/* Status - Pill Shape */}
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Chip
+                      label={vessel.status || 'Available'}
+                      size="small"
+                      onClick={() => handleOpenStatusDialog(vessel)}
+                      sx={{ 
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        fontFamily: '"Inter", sans-serif',
+                        borderRadius: '9999px',
+                        height: 28,
+                        px: 1.5,
+                        bgcolor: getStatusStyles(vessel.status).bgcolor,
+                        color: getStatusStyles(vessel.status).color,
+                        border: `1px solid ${getStatusStyles(vessel.status).borderColor}`,
+                        '&:hover': {
+                          opacity: 0.8,
+                        },
+                        '& .MuiChip-label': {
+                          px: 1.5,
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  
+                  {/* Documents */}
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      {vessel.documents?.map((doc, index) => (
+                        <Chip
+                          key={index}
+                          label={doc.name}
+                          size="small"
+                          onClick={() => handleDownload(doc)}
+                          sx={{ 
+                            m: 0.2,
+                            cursor: 'pointer',
+                            bgcolor: '#EEF2FF',
+                            color: '#4338CA',
+                            fontSize: '0.6rem',
+                            height: 20,
+                            fontFamily: '"Inter", sans-serif',
+                            '&:hover': { bgcolor: '#C7D2FE' }
+                          }}
+                        />
+                      ))}
+                      <Tooltip title="Upload Document">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleUploadDialog(vessel)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#1976d2' }
+                          }}
+                        >
+                          <UploadIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Tooltip title="Edit Vessel">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenDialog(vessel)} 
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#1976d2', bgcolor: 'rgba(25,118,210,0.08)' }
+                          }}
+                        >
+                          <EditIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete Vessel">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleDelete(vessel._id)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' }
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-      {/* ============ SOLD VESSELS TABLE ============ */}
-      {renderVesselTable(
-        soldVesselsList, 
-        'Sold Vessels', 
-        'sold',
-        <SoldIcon sx={{ color: '#ef4444', fontSize: 28 }} />
-      )}
-
-      {/* ============ UNDER MAINTENANCE VESSELS TABLE ============ */}
-      {maintenanceVesselsList.length > 0 && renderVesselTable(
-        maintenanceVesselsList, 
-        'Under Maintenance', 
-        'maintenance',
-        <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
-      )}
-
-      {/* ============ MODALS (unchanged from your original) ============ */}
-      
       {/* Add/Edit Dialog */}
       <Dialog 
         open={openDialog} 
@@ -1649,18 +1607,10 @@ function Vessels() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <CheckCircleIcon sx={{ color: '#22c55e' }} />
                   <Box>
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={500}
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Active
                     </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="#6B7280"
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
                       Vessel is currently in operation
                     </Typography>
                   </Box>
@@ -1670,18 +1620,10 @@ function Vessels() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <CheckCircleIcon sx={{ color: '#3b82f6' }} />
                   <Box>
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={500}
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Available
                     </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="#6B7280"
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
                       Vessel is ready for charter
                     </Typography>
                   </Box>
@@ -1691,18 +1633,10 @@ function Vessels() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <CancelIcon sx={{ color: '#ef4444' }} />
                   <Box>
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={500}
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Sold
                     </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="#6B7280"
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
                       Vessel has been sold
                     </Typography>
                   </Box>
@@ -1712,18 +1646,10 @@ function Vessels() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <PendingIcon sx={{ color: '#f59e0b' }} />
                   <Box>
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={500}
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Under Maintenance
                     </Typography>
-                    <Typography 
-                      variant="caption" 
-                      color="#6B7280"
-                      fontFamily='"Inter", sans-serif'
-                    >
+                    <Typography variant="caption" color="#6B7280" fontFamily='"Inter", sans-serif'>
                       Vessel is being serviced
                     </Typography>
                   </Box>

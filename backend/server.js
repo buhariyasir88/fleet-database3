@@ -14,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ============ MONGODB CONNECTION - FIXED ============
+// ============ MONGODB CONNECTION ============
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fleet_database';
 
 mongoose.connect(MONGODB_URI, {
@@ -222,6 +222,7 @@ app.delete('/api/vessels/:id', async (req, res) => {
   }
 });
 
+// ============ FIXED UPLOAD ROUTE ============
 app.post('/api/vessels/:id/documents', upload.single('document'), async (req, res) => {
   try {
     const vessel = await Vessel.findById(req.params.id);
@@ -229,7 +230,8 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
 
     vessel.documents.push({
       name: req.body.name || req.file.originalname,
-      filePath: req.file.path
+      filePath: req.file.filename, // ✅ FIXED: Store only filename
+      uploadDate: new Date()
     });
     await vessel.save();
     res.json(vessel);
@@ -527,11 +529,9 @@ app.delete('/api/budgets/:id', async (req, res) => {
 // ============ DASHBOARD ROUTE ============
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // Get ALL vessels to calculate status-based counts
     const allVessels = await Vessel.find({});
     const totalVessels = allVessels.length;
     
-    // Count vessels by status
     const activeVessels = allVessels.filter(v => 
       v.status === 'Active' || v.status === 'Available'
     ).length;
@@ -542,22 +542,16 @@ app.get('/api/dashboard', async (req, res) => {
       v.status === 'Under Maintenance'
     ).length;
     
-    // Get total clients
     const totalClients = await Client.countDocuments({});
-    
-    // Count ACTIVE contracts (based on status field)
     const activeContracts = await Contract.countDocuments({ status: 'Active' });
     
-    // Get ALL invoices and calculate stats correctly
     const invoices = await Invoice.find({});
     const totalInvoices = invoices.length;
     const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
     
-    // Count by payment status
     const paidInvoices = invoices.filter(inv => inv.paymentStatus === 'Paid').length;
     const submittedInvoices = invoices.filter(inv => inv.paymentStatus === 'Submitted').length;
     
-    // Overdue = expectedPaymentDate < today AND not Paid
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -569,7 +563,6 @@ app.get('/api/dashboard', async (req, res) => {
       return expectedDate < today;
     }).length;
     
-    // Pending = all non-paid, non-overdue invoices
     const pendingInvoices = invoices.filter(inv => {
       if (inv.paymentStatus === 'Paid') return false;
       if (inv.expectedPaymentDate) {
@@ -582,17 +575,14 @@ app.get('/api/dashboard', async (req, res) => {
     
     const collectionRate = totalInvoices > 0 ? ((paidInvoices / totalInvoices) * 100) : 0;
 
-    // ============ UTILIZATION DATA ============
     const utilizations = await Utilization.find({});
     const currentYear = today.getFullYear();
     const currentMonthIndex = today.getMonth();
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const currentMonthName = months[currentMonthIndex];
     
-    // Get all utilizations for the current year
     const yearData = utilizations.filter(u => u.year === currentYear);
     
-    // Get months to include (up to previous month)
     const monthsToInclude = [];
     for (const month of months) {
       if (months.indexOf(month) < months.indexOf(currentMonthName)) {
@@ -600,18 +590,14 @@ app.get('/api/dashboard', async (req, res) => {
       }
     }
     
-    // Calculate YTD utilization
     let ytdActual = 0;
     let ytdTotalPossibleDays = 0;
-    
-    // Track unique vessels across all months
     const allVesselIds = new Set();
     
     monthsToInclude.forEach(month => {
       const monthData = yearData.filter(u => u.month === month);
       if (monthData.length === 0) return;
       
-      // Count unique vessels in this month
       const vesselIds = new Set();
       monthData.forEach(u => {
         if (u.vessel) {
@@ -624,7 +610,6 @@ app.get('/api/dashboard', async (req, res) => {
       const vesselCount = vesselIds.size || 0;
       if (vesselCount === 0) return;
       
-      // Get days in month
       const daysInMonth = new Date(currentYear, months.indexOf(month) + 1, 0).getDate();
       ytdTotalPossibleDays += vesselCount * daysInMonth;
       
@@ -637,7 +622,6 @@ app.get('/api/dashboard', async (req, res) => {
       ? Math.min(100, (ytdActual / ytdTotalPossibleDays) * 100) 
       : 0;
     
-    // Count unique vessels with utilization data (NOT records)
     const totalVesselsUtil = allVesselIds.size;
 
     res.json({
@@ -654,7 +638,6 @@ app.get('/api/dashboard', async (req, res) => {
       paidInvoices,
       submittedInvoices,
       collectionRate,
-      // Utilization data
       ytdUtilization,
       totalVesselsUtil,
       currentMonth: currentMonthName,
@@ -664,6 +647,21 @@ app.get('/api/dashboard', async (req, res) => {
     console.error('Dashboard error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ============ TEST ROUTE ============
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Fleet Database API is running! 🚀',
+    endpoints: {
+      dashboard: '/api/dashboard',
+      vessels: '/api/vessels',
+      clients: '/api/clients',
+      contracts: '/api/contracts',
+      invoices: '/api/invoices',
+      utilizations: '/api/utilizations'
+    }
+  });
 });
 
 // ============ START SERVER ============
