@@ -2,21 +2,16 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Grid,
-  Card,
-  CardContent,
   Typography,
   Box,
   LinearProgress,
   IconButton,
   Avatar,
   Paper,
-  Divider,
-  Chip,
   Tooltip,
 } from '@mui/material';
 import {
   DirectionsBoat as VesselIcon,
-  People as ClientIcon,
   Description as ContractIcon,
   Receipt as InvoiceIcon,
   TrendingUp as RevenueIcon,
@@ -26,7 +21,6 @@ import {
   TrendingDown as TrendingDownIcon,
   CheckCircle as CheckCircleIcon,
   Speed as UtilizationIcon,
-  CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS,
@@ -90,8 +84,30 @@ function Dashboard() {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/dashboard`);
-      console.log('Dashboard Data:', response.data);
-      setStats(response.data);
+      console.log('Full API Response:', response.data);
+      console.log('totalContracts value:', response.data.totalContracts);
+      
+      // Manually set the stats to ensure totalContracts is captured
+      setStats({
+        totalVessels: response.data.totalVessels || 0,
+        activeVessels: response.data.activeVessels || 0,
+        soldVessels: response.data.soldVessels || 0,
+        maintenanceVessels: response.data.maintenanceVessels || 0,
+        totalClients: response.data.totalClients || 0,
+        activeContracts: response.data.activeContracts || 0,
+        totalContracts: response.data.totalContracts || 0,  // ← FIXED
+        totalInvoices: response.data.totalInvoices || 0,
+        totalRevenue: response.data.totalRevenue || 0,
+        pendingInvoices: response.data.pendingInvoices || 0,
+        overdueInvoices: response.data.overdueInvoices || 0,
+        paidInvoices: response.data.paidInvoices || 0,
+        submittedInvoices: response.data.submittedInvoices || 0,
+        collectionRate: response.data.collectionRate || 0,
+        ytdUtilization: response.data.ytdUtilization || 0,
+        totalVesselsUtil: response.data.totalVesselsUtil || 0,
+        currentMonth: response.data.currentMonth || '',
+        currentYear: response.data.currentYear || 0
+      });
       
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
       setMonthlyData(months.map(() => Math.floor(Math.random() * 1000) + 500));
@@ -100,42 +116,6 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const totalPending = stats.pendingInvoices + stats.overdueInvoices;
-
-  // Revenue Mini Chart
-  const revenueChartData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    datasets: [{
-      label: 'Revenue',
-      data: monthlyData,
-      borderColor: '#1976d2',
-      backgroundColor: 'rgba(25, 118, 210, 0.1)',
-      fill: true,
-      tension: 0.4,
-      pointRadius: 2,
-      pointBackgroundColor: '#1976d2',
-    }],
-  };
-
-  const revenueChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { 
-        callbacks: { 
-          label: function(context) { 
-            return 'RM ' + context.parsed.y.toLocaleString(); 
-          } 
-        } 
-      },
-    },
-    scales: {
-      x: { display: false, grid: { display: false } },
-      y: { display: false, grid: { display: false } },
-    },
   };
 
   if (loading) {
@@ -148,6 +128,10 @@ function Dashboard() {
       </Box>
     );
   }
+
+  // Debug: Log the stats to verify totalContracts
+  console.log('Stats object:', stats);
+  console.log('stats.totalContracts:', stats.totalContracts);
 
   return (
     <Box sx={{ fontFamily: '"Inter", -apple-system, sans-serif' }}>
@@ -195,7 +179,7 @@ function Dashboard() {
         </Tooltip>
       </Box>
 
-      {/* ============ SIMPLIFIED STATS CARDS ============ */}
+      {/* Main Stats - 4 Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* Total Vessels */}
         <Grid item xs={12} sm={6} md={3}>
@@ -263,7 +247,7 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Total Contracts - FIXED */}
+        {/* Total Contracts - FIXED with direct value display */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -275,18 +259,21 @@ function Dashboard() {
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'center',
+              bgcolor: '#f8f4ff',
+              borderColor: '#7c3aed',
+              borderWidth: 1,
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar sx={{ bgcolor: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', width: 44, height: 44, borderRadius: 2 }}>
+              <Avatar sx={{ bgcolor: 'rgba(124, 58, 237, 0.15)', color: '#7c3aed', width: 44, height: 44, borderRadius: 2 }}>
                 <ContractIcon sx={{ fontSize: 22 }} />
               </Avatar>
               <Box>
                 <Typography variant="caption" sx={{ fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.6rem' }}>
                   Total Contracts
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0f172a', fontSize: '1.5rem', lineHeight: 1.2 }}>
-                  {stats.totalContracts !== undefined ? stats.totalContracts : 0}
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#7c3aed', fontSize: '1.5rem', lineHeight: 1.2 }}>
+                  {stats.totalContracts || 0}
                 </Typography>
               </Box>
             </Box>
@@ -329,7 +316,6 @@ function Dashboard() {
 
       {/* Invoice Stats - 4 Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* Total Invoices */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -362,7 +348,6 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Collection Rate */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -395,7 +380,6 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Pending Invoices */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -428,7 +412,6 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Overdue Invoices */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
