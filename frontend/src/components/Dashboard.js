@@ -85,28 +85,30 @@ function Dashboard() {
       setLoading(true);
       const response = await axios.get(`${API_URL}/dashboard`);
       console.log('Full API Response:', response.data);
-      console.log('totalContracts value:', response.data.totalContracts);
       
-      // Manually set the stats to ensure totalContracts is captured
+      // Use the response data directly
+      const data = response.data;
+      
+      // Update stats with all values
       setStats({
-        totalVessels: response.data.totalVessels || 0,
-        activeVessels: response.data.activeVessels || 0,
-        soldVessels: response.data.soldVessels || 0,
-        maintenanceVessels: response.data.maintenanceVessels || 0,
-        totalClients: response.data.totalClients || 0,
-        activeContracts: response.data.activeContracts || 0,
-        totalContracts: response.data.totalContracts || 0,  // ← FIXED
-        totalInvoices: response.data.totalInvoices || 0,
-        totalRevenue: response.data.totalRevenue || 0,
-        pendingInvoices: response.data.pendingInvoices || 0,
-        overdueInvoices: response.data.overdueInvoices || 0,
-        paidInvoices: response.data.paidInvoices || 0,
-        submittedInvoices: response.data.submittedInvoices || 0,
-        collectionRate: response.data.collectionRate || 0,
-        ytdUtilization: response.data.ytdUtilization || 0,
-        totalVesselsUtil: response.data.totalVesselsUtil || 0,
-        currentMonth: response.data.currentMonth || '',
-        currentYear: response.data.currentYear || 0
+        totalVessels: data.totalVessels || 0,
+        activeVessels: data.activeVessels || 0,
+        soldVessels: data.soldVessels || 0,
+        maintenanceVessels: data.maintenanceVessels || 0,
+        totalClients: data.totalClients || 0,
+        activeContracts: data.activeContracts || 0,
+        totalContracts: data.totalContracts || 0,  // ← THIS IS THE KEY FIX
+        totalInvoices: data.totalInvoices || 0,
+        totalRevenue: data.totalRevenue || 0,
+        pendingInvoices: data.pendingInvoices || 0,
+        overdueInvoices: data.overdueInvoices || 0,
+        paidInvoices: data.paidInvoices || 0,
+        submittedInvoices: data.submittedInvoices || 0,
+        collectionRate: data.collectionRate || 0,
+        ytdUtilization: data.ytdUtilization || 0,
+        totalVesselsUtil: data.totalVesselsUtil || 0,
+        currentMonth: data.currentMonth || '',
+        currentYear: data.currentYear || 0
       });
       
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -129,9 +131,7 @@ function Dashboard() {
     );
   }
 
-  // Debug: Log the stats to verify totalContracts
-  console.log('Stats object:', stats);
-  console.log('stats.totalContracts:', stats.totalContracts);
+  console.log('Current stats.totalContracts:', stats.totalContracts);
 
   return (
     <Box sx={{ fontFamily: '"Inter", -apple-system, sans-serif' }}>
@@ -247,7 +247,7 @@ function Dashboard() {
           </Paper>
         </Grid>
 
-        {/* Total Contracts - FIXED with direct value display */}
+        {/* Total Contracts - FIXED */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -260,8 +260,6 @@ function Dashboard() {
               flexDirection: 'column',
               justifyContent: 'center',
               bgcolor: '#f8f4ff',
-              borderColor: '#7c3aed',
-              borderWidth: 1,
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -273,7 +271,7 @@ function Dashboard() {
                   Total Contracts
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#7c3aed', fontSize: '1.5rem', lineHeight: 1.2 }}>
-                  {stats.totalContracts || 0}
+                  {stats.totalContracts !== undefined ? stats.totalContracts : 0}
                 </Typography>
               </Box>
             </Box>
