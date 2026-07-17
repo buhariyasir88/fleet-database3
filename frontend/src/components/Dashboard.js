@@ -58,8 +58,11 @@ ChartJS.register(
 
 const API_URL = 'http://localhost:5005/api';
 
-// ============ STAT CARD COMPONENT ============
+// ============ STAT CARD COMPONENT - FIXED ============
 const StatCard = ({ title, value, icon, color, bgColor, subtitle, chart, height = 140 }) => {
+  // Ensure value is displayed correctly - FIXES THE BLANK ISSUE
+  const displayValue = (value !== undefined && value !== null) ? value : 0;
+
   return (
     <Paper
       elevation={0}
@@ -118,7 +121,7 @@ const StatCard = ({ title, value, icon, color, bgColor, subtitle, chart, height 
               mb: 0.25,
             }}
           >
-            {value}
+            {displayValue}
           </Typography>
           {subtitle && (
             <Typography
@@ -186,6 +189,8 @@ function Dashboard() {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/dashboard`);
+      // Debug log to verify data
+      console.log('Dashboard Data:', response.data);
       setStats(response.data);
       
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -263,7 +268,7 @@ function Dashboard() {
     },
     {
       title: 'Total Contracts',
-      value: stats.totalContracts || 0,  // ← FIXED: Added fallback
+      value: stats.totalContracts,
       icon: <ContractIcon sx={{ fontSize: 22 }} />,
       color: '#7c3aed',
       bgColor: 'rgba(124, 58, 237, 0.08)',
