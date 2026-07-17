@@ -42,8 +42,6 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Pending as PendingIcon,
-  Folder as FolderIcon,
-  Link as LinkIcon,
 } from '@mui/icons-material';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
@@ -73,16 +71,6 @@ function Vessels() {
   const [statusDialog, setStatusDialog] = useState(false);
   const [statusVessel, setStatusVessel] = useState(null);
   const [newStatus, setNewStatus] = useState('Active');
-  
-  // ============ NEW: OneDrive Link Dialog ============
-  const [linkDialog, setLinkDialog] = useState(false);
-  const [linkVessel, setLinkVessel] = useState(null);
-  const [linkName, setLinkName] = useState('');
-  const [linkPath, setLinkPath] = useState('');
-  
-  // ============ NEW: Show OneDrive Path Dialog ============
-  const [pathDialog, setPathDialog] = useState(false);
-  const [pathVessel, setPathVessel] = useState(null);
 
   useEffect(() => {
     fetchVessels();
@@ -230,63 +218,10 @@ function Vessels() {
       return;
     }
     
-    // Check if it's a OneDrive path or link
-    if (doc.filePath.includes('OneDrive') || doc.filePath.includes('C:\\') || doc.filePath.includes('http')) {
-      // Open the file directly (OneDrive path or link)
-      window.open(doc.filePath, '_blank');
-      return;
-    }
-    
-    // Otherwise, use the standard Render upload
+    // Extract just the filename
     const fileName = doc.filePath.split('/').pop().split('\\').pop();
-    const downloadUrl = `https://fleet-database3.onrender.com/uploads/${encodeURIComponent(fileName)}`;
+    const downloadUrl = `${API_URL.replace('/api', '')}/uploads/${encodeURIComponent(fileName)}`;
     window.open(downloadUrl, '_blank');
-  };
-
-  // ============ NEW: Get OneDrive Path for Vessel ============
-  const getOneDrivePath = (vessel) => {
-    const vesselName = vessel.name.replace('MV ', '').trim();
-    return `C:\\Users\\User\\OneDrive - Dinastia Jati Sdn Bhd\\2024\\7. VESSEL CERT & DOC\\uploads\\${vesselName}.pdf`;
-  };
-
-  // ============ NEW: Open OneDrive Folder ============
-  const openOneDriveFolder = () => {
-    const folderPath = 'file:///C:/Users/User/OneDrive%20-%20Dinastia%20Jati%20Sdn%20Bhd/2024/7.%20VESSEL%20CERT%20%26%20DOC/uploads/';
-    window.open(folderPath, '_blank');
-  };
-
-  // ============ NEW: Link Document Dialog ============
-  const handleOpenLinkDialog = (vessel) => {
-    setLinkVessel(vessel);
-    setLinkName('Vessel Spec');
-    setLinkPath(getOneDrivePath(vessel));
-    setLinkDialog(true);
-  };
-
-  const handleLinkSubmit = async () => {
-    if (!linkPath.trim()) {
-      showSnackbar('Please enter a file path', 'error');
-      return;
-    }
-
-    try {
-      await axios.post(`${API_URL}/vessels/${linkVessel._id}/documents`, {
-        name: linkName,
-        filePath: linkPath
-      });
-      showSnackbar('Document linked successfully! 🎉');
-      setLinkDialog(false);
-      fetchVessels();
-    } catch (error) {
-      console.error('Error linking document:', error);
-      showSnackbar('Error linking document', 'error');
-    }
-  };
-
-  // ============ NEW: Show Path Dialog ============
-  const handleShowPath = (vessel) => {
-    setPathVessel(vessel);
-    setPathDialog(true);
   };
 
   const handleOpenStatusDialog = (vessel) => {
@@ -348,11 +283,410 @@ function Vessels() {
     }
   };
 
+  // ============ FILTER VESSELS ============
+  const activeVessels = vessels.filter(v => v.status === 'Active' || v.status === 'Available');
+  const soldVessels = vessels.filter(v => v.status === 'Sold');
+  const maintenanceVessels = vessels.filter(v => v.status === 'Under Maintenance');
+
   // ============ STATS ============
   const totalVessels = vessels.length;
   const totalDocuments = vessels.reduce((sum, v) => sum + (v.documents?.length || 0), 0);
   const fleetTypes = new Set(vessels.map(v => v.indType)).size;
-  const activeVessels = vessels.filter(v => v.status === 'Active' || v.status === 'Available').length;
+  const activeVesselsCount = vessels.filter(v => v.status === 'Active' || v.status === 'Available').length;
+
+  // ============ RENDER TABLE FUNCTION ============
+  const renderVesselTable = (vesselList, title, statusType, icon) => {
+    if (vesselList.length === 0) {
+      return (
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            {icon}
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827' }}>
+              {title}
+            </Typography>
+            <Chip label="0" size="small" sx={{ bgcolor: '#F3F4F6', fontWeight: 500 }} />
+          </Box>
+          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: '#F9FAFB' }}>
+            <Typography color="textSecondary">No {title.toLowerCase()}</Typography>
+          </Paper>
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ mb: 4 }}>
+        {/* Section Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          {icon}
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827' }}>
+            {title}
+          </Typography>
+          <Chip 
+            label={vesselList.length} 
+            size="small" 
+            sx={{ 
+              bgcolor: statusType === 'active' ? '#22c55e' : statusType === 'sold' ? '#ef4444' : '#f59e0b',
+              color: 'white',
+              fontWeight: 600,
+            }} 
+          />
+        </Box>
+
+        {/* Table */}
+        <TableContainer 
+          component={Paper} 
+          sx={{ 
+            borderRadius: 3, 
+            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+            overflow: 'hidden',
+            border: statusType === 'active' ? '1px solid rgba(34,197,94,0.2)' : 
+                    statusType === 'sold' ? '1px solid rgba(239,68,68,0.2)' : 
+                    '1px solid rgba(245,158,11,0.2)',
+          }}
+        >
+          <Table sx={{ borderCollapse: 'collapse' }}>
+            <TableHead>
+              <TableRow sx={{ 
+                bgcolor: statusType === 'active' ? '#F0FDF4' : 
+                        statusType === 'sold' ? '#FEF2F2' : 
+                        '#FFFBEB',
+                borderBottom: '1px solid #E5E7EB',
+              }}>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Vessel
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  IMO
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Type
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Flag
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Year
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  GRT
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Speed
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Seats
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Status
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Docs
+                </TableCell>
+                <TableCell sx={{ 
+                  fontWeight: 700, 
+                  color: '#111827', 
+                  fontSize: '0.7rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em',
+                  fontFamily: '"Inter", sans-serif',
+                  py: 2.5,
+                  border: 'none',
+                }}>
+                  Actions
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            
+            <TableBody>
+              {vesselList.map((vessel, index) => (
+                <TableRow 
+                  key={vessel._id} 
+                  hover
+                  sx={{ 
+                    '&:hover': { bgcolor: '#F9FAFB' },
+                    transition: 'background-color 0.2s',
+                    borderBottom: index < vesselList.length - 1 ? '1px solid #F3F4F6' : 'none',
+                  }}
+                >
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar 
+                        sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: statusType === 'active' ? '#22c55e' : 
+                                  statusType === 'sold' ? '#ef4444' : '#f59e0b',
+                          borderRadius: 1.5,
+                        }}
+                      >
+                        <VesselIcon sx={{ fontSize: 16, color: 'white' }} />
+                      </Avatar>
+                      <Typography sx={{ 
+                        fontWeight: 500, 
+                        color: '#111827',
+                        fontFamily: '"Inter", sans-serif',
+                        fontSize: '0.875rem',
+                      }}>
+                        {vessel.name}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.imoNumber || '-'}
+                  </TableCell>
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Chip 
+                      label={vessel.indType || 'N/A'} 
+                      size="small" 
+                      sx={{ 
+                        bgcolor: '#F3F4F6', 
+                        fontWeight: 500,
+                        fontSize: '0.7rem',
+                        color: '#6B7280',
+                        borderRadius: 1,
+                        fontFamily: '"Inter", sans-serif',
+                      }} 
+                    />
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.flag || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.year || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.grt || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.speed || '-'}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: '#6B7280', 
+                    fontSize: '0.875rem',
+                    fontFamily: '"Inter", sans-serif',
+                    py: 3,
+                    border: 'none',
+                  }}>
+                    {vessel.totalSeat || '-'}
+                  </TableCell>
+                  
+                  {/* Status - Pill Shape */}
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Chip
+                      label={vessel.status || 'Available'}
+                      size="small"
+                      onClick={() => handleOpenStatusDialog(vessel)}
+                      sx={{ 
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        fontFamily: '"Inter", sans-serif',
+                        borderRadius: '9999px',
+                        height: 28,
+                        px: 1.5,
+                        bgcolor: getStatusStyles(vessel.status).bgcolor,
+                        color: getStatusStyles(vessel.status).color,
+                        border: `1px solid ${getStatusStyles(vessel.status).borderColor}`,
+                        '&:hover': {
+                          opacity: 0.8,
+                        },
+                        '& .MuiChip-label': {
+                          px: 1.5,
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                      {vessel.documents?.map((doc, index) => (
+                        <Chip
+                          key={index}
+                          label={doc.name}
+                          size="small"
+                          onClick={() => handleDownload(doc)}
+                          sx={{ 
+                            m: 0.2,
+                            cursor: 'pointer',
+                            bgcolor: '#EEF2FF',
+                            color: '#4338CA',
+                            fontSize: '0.6rem',
+                            height: 20,
+                            fontFamily: '"Inter", sans-serif',
+                            '&:hover': { bgcolor: '#C7D2FE' }
+                          }}
+                        />
+                      ))}
+                      <Tooltip title="Upload Document">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleUploadDialog(vessel)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#1976d2' }
+                          }}
+                        >
+                          <UploadIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ py: 3, border: 'none' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Tooltip title="Edit Vessel">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleOpenDialog(vessel)} 
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#1976d2', bgcolor: 'rgba(25,118,210,0.08)' }
+                          }}
+                        >
+                          <EditIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete Vessel">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleDelete(vessel._id)}
+                          sx={{ 
+                            color: '#6B7280',
+                            '&:hover': { color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' }
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
+  };
 
   if (loading) {
     return <LinearProgress />;
@@ -587,14 +921,14 @@ function Vessels() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Avatar
                 sx={{
-                  bgcolor: 'rgba(76, 175, 80, 0.1)',
-                  color: '#4caf50',
+                  bgcolor: 'rgba(34, 197, 94, 0.1)',
+                  color: '#22c55e',
                   width: 44,
                   height: 44,
                   borderRadius: 2,
                 }}
               >
-                <VesselIcon sx={{ fontSize: 22 }} />
+                <CheckCircleIcon sx={{ fontSize: 22 }} />
               </Avatar>
               <Box>
                 <Typography
@@ -614,12 +948,12 @@ function Vessels() {
                   variant="h4"
                   sx={{
                     fontWeight: 700,
-                    color: '#111827',
+                    color: '#22c55e',
                     lineHeight: 1.2,
                     fontFamily: '"Inter", sans-serif',
                   }}
                 >
-                  {activeVessels}
+                  {activeVesselsCount}
                 </Typography>
               </Box>
             </Box>
@@ -650,532 +984,32 @@ function Vessels() {
         </Button>
       </Box>
 
-      {/* Table */}
-      <TableContainer 
-        component={Paper} 
-        sx={{ 
-          borderRadius: 3, 
-          boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-          overflow: 'hidden',
-          border: 'none',
-        }}
-      >
-        <Table sx={{ borderCollapse: 'collapse' }}>
-          <TableHead>
-            <TableRow sx={{ 
-              bgcolor: '#F9FAFB',
-              borderBottom: '1px solid #E5E7EB',
-            }}>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Vessel
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                IMO
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Type
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Flag
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Year
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                GRT
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Speed
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Seats
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Status
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Docs
-              </TableCell>
-              <TableCell sx={{ 
-                fontWeight: 700, 
-                color: '#111827', 
-                fontSize: '0.7rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em',
-                fontFamily: '"Inter", sans-serif',
-                py: 2.5,
-                border: 'none',
-              }}>
-                Actions
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          
-          <TableBody>
-            {vessels.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={11} align="center" sx={{ py: 6 }}>
-                  <VesselIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
-                  <Typography color="textSecondary" variant="h6" sx={{ fontWeight: 500 }}>
-                    No vessels found
-                  </Typography>
-                  <Typography color="textSecondary" variant="body2">
-                    Click "Add New Vessel" to get started
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              vessels.map((vessel, index) => (
-                <TableRow 
-                  key={vessel._id} 
-                  hover
-                  sx={{ 
-                    '&:hover': { bgcolor: '#F9FAFB' },
-                    transition: 'background-color 0.2s',
-                    borderBottom: index < vessels.length - 1 ? '1px solid #F3F4F6' : 'none',
-                  }}
-                >
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar 
-                        sx={{ 
-                          width: 32, 
-                          height: 32, 
-                          bgcolor: '#1976d2',
-                          borderRadius: 1.5,
-                        }}
-                      >
-                        <VesselIcon sx={{ fontSize: 16, color: 'white' }} />
-                      </Avatar>
-                      <Typography sx={{ 
-                        fontWeight: 500, 
-                        color: '#111827',
-                        fontFamily: '"Inter", sans-serif',
-                        fontSize: '0.875rem',
-                      }}>
-                        {vessel.name}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.imoNumber || '-'}
-                  </TableCell>
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Chip 
-                      label={vessel.indType || 'N/A'} 
-                      size="small" 
-                      sx={{ 
-                        bgcolor: '#F3F4F6', 
-                        fontWeight: 500,
-                        fontSize: '0.7rem',
-                        color: '#6B7280',
-                        borderRadius: 1,
-                        fontFamily: '"Inter", sans-serif',
-                      }} 
-                    />
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.flag || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.year || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.grt || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.speed || '-'}
-                  </TableCell>
-                  <TableCell sx={{ 
-                    color: '#6B7280', 
-                    fontSize: '0.875rem',
-                    fontFamily: '"Inter", sans-serif',
-                    py: 3,
-                    border: 'none',
-                  }}>
-                    {vessel.totalSeat || '-'}
-                  </TableCell>
-                  
-                  {/* Status */}
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Chip
-                      label={vessel.status || 'Available'}
-                      size="small"
-                      onClick={() => handleOpenStatusDialog(vessel)}
-                      sx={{ 
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.7rem',
-                        fontFamily: '"Inter", sans-serif',
-                        borderRadius: '9999px',
-                        height: 28,
-                        px: 1.5,
-                        bgcolor: getStatusStyles(vessel.status).bgcolor,
-                        color: getStatusStyles(vessel.status).color,
-                        border: `1px solid ${getStatusStyles(vessel.status).borderColor}`,
-                        '&:hover': {
-                          opacity: 0.8,
-                        },
-                        '& .MuiChip-label': {
-                          px: 1.5,
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  
-                  {/* Documents */}
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                      {vessel.documents?.map((doc, index) => (
-                        <Chip
-                          key={index}
-                          label={doc.name}
-                          size="small"
-                          onClick={() => handleDownload(doc)}
-                          sx={{ 
-                            m: 0.2,
-                            cursor: 'pointer',
-                            bgcolor: '#EEF2FF',
-                            color: '#4338CA',
-                            fontSize: '0.6rem',
-                            height: 20,
-                            fontFamily: '"Inter", sans-serif',
-                            '&:hover': { bgcolor: '#C7D2FE' }
-                          }}
-                        />
-                      ))}
-                      <Tooltip title="Upload Document">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleUploadDialog(vessel)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#1976d2' }
-                          }}
-                        >
-                          <UploadIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      {/* NEW: Link Document Button */}
-                      <Tooltip title="Link Document from OneDrive">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleOpenLinkDialog(vessel)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#22c55e' }
-                          }}
-                        >
-                          <LinkIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      {/* NEW: Open OneDrive Folder Button */}
-                      <Tooltip title="Open OneDrive Folder">
-                        <IconButton 
-                          size="small" 
-                          onClick={openOneDriveFolder}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#f59e0b' }
-                          }}
-                        >
-                          <FolderIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                      
-                      {/* NEW: Show Path Button */}
-                      <Tooltip title="Show OneDrive Path">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleShowPath(vessel)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#3b82f6' }
-                          }}
-                        >
-                          <FolderIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                  
-                  <TableCell sx={{ py: 3, border: 'none' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Tooltip title="Edit Vessel">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleOpenDialog(vessel)} 
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#1976d2', bgcolor: 'rgba(25,118,210,0.08)' }
-                          }}
-                        >
-                          <EditIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Vessel">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleDelete(vessel._id)}
-                          sx={{ 
-                            color: '#6B7280',
-                            '&:hover': { color: '#EF4444', bgcolor: 'rgba(239,68,68,0.08)' }
-                          }}
-                        >
-                          <DeleteIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {/* ============ ACTIVE VESSELS TABLE ============ */}
+      {renderVesselTable(
+        activeVessels, 
+        'Active Vessels', 
+        'active',
+        <CheckCircleIcon sx={{ color: '#22c55e', fontSize: 28 }} />
+      )}
 
-      {/* ============ NEW: Link Document Dialog ============ */}
-      <Dialog 
-        open={linkDialog} 
-        onClose={() => setLinkDialog(false)} 
-        maxWidth="sm" 
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LinkIcon color="primary" />
-            Link OneDrive Document
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Typography variant="caption" color="textSecondary">
-              {linkVessel?.name}
-            </Typography>
-            <TextField
-              label="Document Name"
-              value={linkName}
-              onChange={(e) => setLinkName(e.target.value)}
-              fullWidth
-              size="small"
-            />
-            <TextField
-              label="OneDrive Path or Link"
-              value={linkPath}
-              onChange={(e) => setLinkPath(e.target.value)}
-              fullWidth
-              multiline
-              rows={2}
-              placeholder="Paste the OneDrive file path here..."
-              helperText={`Example: C:\\Users\\User\\OneDrive - Dinastia Jati Sdn Bhd\\2024\\7. VESSEL CERT & DOC\\uploads\\${linkVessel?.name?.replace('MV ', '')}.pdf`}
-            />
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button 
-                size="small" 
-                variant="outlined"
-                onClick={() => setLinkPath(getOneDrivePath(linkVessel))}
-              >
-                Auto-fill Path
-              </Button>
-              <Button 
-                size="small" 
-                variant="outlined"
-                onClick={openOneDriveFolder}
-              >
-                Open OneDrive Folder
-              </Button>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLinkDialog(false)}>Cancel</Button>
-          <Button onClick={handleLinkSubmit} variant="contained">Link Document</Button>
-        </DialogActions>
-      </Dialog>
+      {/* ============ SOLD VESSELS TABLE ============ */}
+      {renderVesselTable(
+        soldVessels, 
+        'Sold Vessels', 
+        'sold',
+        <CancelIcon sx={{ color: '#ef4444', fontSize: 28 }} />
+      )}
 
-      {/* ============ NEW: Show Path Dialog ============ */}
-      <Dialog 
-        open={pathDialog} 
-        onClose={() => setPathDialog(false)} 
-        maxWidth="sm" 
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FolderIcon color="primary" />
-            OneDrive Document Path
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="caption" color="textSecondary">
-              File Path for {pathVessel?.name}:
-            </Typography>
-            <Paper sx={{ p: 2, mt: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  wordBreak: 'break-all', 
-                  fontFamily: 'monospace',
-                  fontSize: '0.7rem'
-                }}
-              >
-                {pathVessel && getOneDrivePath(pathVessel)}
-              </Typography>
-            </Paper>
-            <Typography variant="caption" color="textSecondary" sx={{ mt: 2, display: 'block' }}>
-              💡 Copy this path to your file explorer or use the "Link Document" button to add it.
-            </Typography>
-            <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-              <Button 
-                variant="outlined"
-                onClick={() => {
-                  navigator.clipboard.writeText(getOneDrivePath(pathVessel));
-                  showSnackbar('Path copied to clipboard!', 'success');
-                }}
-                startIcon={<FolderIcon />}
-              >
-                Copy Path
-              </Button>
-              <Button 
-                variant="contained"
-                onClick={() => {
-                  window.open(getOneDrivePath(pathVessel).replace(/\\/g, '/'), '_blank');
-                }}
-                startIcon={<FolderIcon />}
-              >
-                Open File
-              </Button>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPathDialog(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      {/* ============ UNDER MAINTENANCE VESSELS TABLE ============ */}
+      {maintenanceVessels.length > 0 && renderVesselTable(
+        maintenanceVessels, 
+        'Under Maintenance', 
+        'maintenance',
+        <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
+      )}
 
+      {/* ============ DIALOGS (unchanged) ============ */}
+      
       {/* Upload Dialog */}
       <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Upload Document</DialogTitle>
@@ -1946,7 +1780,6 @@ function Vessels() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
