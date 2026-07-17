@@ -72,6 +72,56 @@ function Reports() {
   const printRef = useRef();
   const [isPrinting, setIsPrinting] = useState(false);
 
+  // ============ YTD UTILIZATION CALCULATION ============
+  const calculateYTDUtilization = (utilizations, year) => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonthIndex = today.getMonth();
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const currentMonthName = months[currentMonthIndex];
+    
+    // Filter utilizations for the given year
+    const yearData = utilizations.filter(u => u.year === year);
+    
+    // Determine which months to include (up to previous month for current year)
+    let monthsToInclude = [];
+    if (year === currentYear) {
+      monthsToInclude = months.slice(0, currentMonthIndex);
+    } else {
+      monthsToInclude = months;
+    }
+    
+    if (monthsToInclude.length === 0) return 0;
+    
+    let totalActual = 0;
+    let totalPossibleDays = 0;
+    
+    monthsToInclude.forEach(month => {
+      const monthData = yearData.filter(u => u.month === month);
+      
+      const vesselIds = new Set();
+      monthData.forEach(u => {
+        if (u.vessel) {
+          const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+          vesselIds.add(id);
+        }
+      });
+      
+      const vesselCount = vesselIds.size || 0;
+      if (vesselCount === 0) return;
+      
+      const daysInMonth = new Date(year, months.indexOf(month) + 1, 0).getDate();
+      totalPossibleDays += vesselCount * daysInMonth;
+      
+      monthData.forEach(u => {
+        totalActual += u.actualDays || 0;
+      });
+    });
+    
+    if (totalPossibleDays === 0) return 0;
+    return Math.min(100, (totalActual / totalPossibleDays) * 100);
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -148,18 +198,18 @@ function Reports() {
     else contractStatusCounts.Pending++;
   });
 
-  // ============ DISTINCT VESSEL COLORS ============
+  // ============ VESSEL COLORS ============
   const colors = [
-    'rgba(25,118,210,0.7)',   // Blue - MV Jati Sipadan
-    'rgba(46,125,50,0.7)',    // Green - MV Jati Manukan
-    'rgba(237,108,2,0.7)',    // Orange - MV Jati Ten
-    'rgba(156,39,176,0.7)',   // Purple - MV Jati Nine
-    'rgba(211,47,47,0.7)',    // Red - MV Jati Eight
-    'rgba(121,85,72,0.7)',    // Brown - MV Jati Seven
-    'rgba(233,30,99,0.7)',    // Pink - MV Jati Six
-    'rgba(255,193,7,0.7)',    // Amber (extra)
-    'rgba(96,125,139,0.7)',   // Blue Grey (extra)
-    'rgba(139,195,74,0.7)',   // Light Green (extra)
+    'rgba(25,118,210,0.7)',
+    'rgba(46,125,50,0.7)',
+    'rgba(237,108,2,0.7)',
+    'rgba(156,39,176,0.7)',
+    'rgba(211,47,47,0.7)',
+    'rgba(121,85,72,0.7)',
+    'rgba(233,30,99,0.7)',
+    'rgba(255,193,7,0.7)',
+    'rgba(96,125,139,0.7)',
+    'rgba(139,195,74,0.7)',
   ];
 
   const borderColors = [
@@ -597,18 +647,17 @@ function Reports() {
 
   const utilMonths = Object.keys(utilData).sort((a, b) => monthsOrder.indexOf(a) - monthsOrder.indexOf(b));
 
-  // ============ UTILIZATION COLORS - UPDATED ============
   const utilColors = [
-    'rgba(25,118,210,0.7)',   // Blue - MV Jati Sipadan
-    'rgba(46,125,50,0.7)',    // Green - MV Jati Manukan
-    'rgba(237,108,2,0.7)',    // Orange - MV Jati Ten
-    'rgba(156,39,176,0.7)',   // Purple - MV Jati Nine
-    'rgba(211,47,47,0.7)',    // Red - MV Jati Eight
-    'rgba(121,85,72,0.7)',    // Brown - MV Jati Seven
-    'rgba(233,30,99,0.7)',    // Pink - MV Jati Six
-    'rgba(255,193,7,0.7)',    // Amber (extra)
-    'rgba(96,125,139,0.7)',   // Blue Grey (extra)
-    'rgba(139,195,74,0.7)',   // Light Green (extra)
+    'rgba(25,118,210,0.7)',
+    'rgba(46,125,50,0.7)',
+    'rgba(237,108,2,0.7)',
+    'rgba(156,39,176,0.7)',
+    'rgba(211,47,47,0.7)',
+    'rgba(121,85,72,0.7)',
+    'rgba(233,30,99,0.7)',
+    'rgba(255,193,7,0.7)',
+    'rgba(96,125,139,0.7)',
+    'rgba(139,195,74,0.7)',
   ];
 
   const utilBorderColors = [
@@ -688,25 +737,64 @@ function Reports() {
     },
   };
 
-  // ============ STATS ============
+  // ============ STATS - FIXED ============
   const totalContractValue = contracts.reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingContractValue = contracts.filter(c => getContractStatus(c) === 'Active').reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingPercent = totalContractValue > 0 ? ((remainingContractValue / totalContractValue) * 100).toFixed(1) : 0;
+  
+  // FIXED: Total Contracts - use contracts.length
+  const totalContracts = contracts.length;
+  
+  // FIXED: Overall Utilization - use YTD calculation (same as Utilization section)
+  const overallUtilization = calculateYTDUtilization(utilizations, selectedYear);
+  
+  // Calculate actual and possible days for display
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonthIndex = today.getMonth();
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const currentMonthName = months[currentMonthIndex];
+  
+  const yearData = utilizations.filter(u => u.year === selectedYear);
+  const monthsToInclude = [];
+  if (selectedYear === currentYear) {
+    monthsToInclude.push(...months.slice(0, currentMonthIndex));
+  } else {
+    monthsToInclude.push(...months);
+  }
+  
+  let ytdActualDays = 0;
+  let ytdPossibleDays = 0;
+  
+  monthsToInclude.forEach(month => {
+    const monthData = yearData.filter(u => u.month === month);
+    const vesselIds = new Set();
+    monthData.forEach(u => {
+      if (u.vessel) {
+        const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+        vesselIds.add(id);
+      }
+    });
+    const vesselCount = vesselIds.size || 0;
+    if (vesselCount > 0) {
+      const daysInMonth = new Date(selectedYear, months.indexOf(month) + 1, 0).getDate();
+      ytdPossibleDays += vesselCount * daysInMonth;
+      monthData.forEach(u => {
+        ytdActualDays += u.actualDays || 0;
+      });
+    }
+  });
 
   const totalInvoiceAmount = filteredInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
   const totalBudgetAmount = filteredBudgets.reduce((sum, b) => sum + (b.budgetedSale || 0), 0);
   const invoiceVariance = totalInvoiceAmount - totalBudgetAmount;
   const invoiceVariancePercent = totalBudgetAmount > 0 ? ((invoiceVariance / totalBudgetAmount) * 100).toFixed(2) : 0;
 
-  const totalUtilBudget = filteredUtilizations.reduce((sum, u) => sum + (u.budgetDays || 0), 0);
-  const totalUtilActual = filteredUtilizations.reduce((sum, u) => sum + (u.actualDays || 0), 0);
-  const overallUtilization = totalUtilBudget > 0 ? ((totalUtilActual / totalUtilBudget) * 100) : 0;
-
   // Stats Cards Data
   const statsCards = [
     { 
       title: 'Total Contracts', 
-      value: contracts.length, 
+      value: totalContracts, 
       icon: <ContractIcon sx={{ fontSize: 22 }} />, 
       color: '#1976d2', 
       bgColor: 'rgba(25, 118, 210, 0.1)',
@@ -734,7 +822,7 @@ function Reports() {
       icon: <UtilizationIcon sx={{ fontSize: 22 }} />, 
       color: overallUtilization >= 80 ? '#4caf50' : overallUtilization >= 60 ? '#ff9800' : '#f44336',
       bgColor: overallUtilization >= 80 ? 'rgba(76, 175, 80, 0.1)' : overallUtilization >= 60 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-      subtitle: `${totalUtilActual.toFixed(1)} / ${totalUtilBudget.toFixed(1)} days`
+      subtitle: `${ytdActualDays.toFixed(1)} / ${ytdPossibleDays.toFixed(1)} days`
     },
   ];
 
@@ -1021,7 +1109,6 @@ function Reports() {
             gridTemplateColumns: 'repeat(5, 1fr)',
             gap: 2,
           }}>
-            {/* Card 1: Total Invoices */}
             <Card sx={{ 
               p: 1.5, 
               bgcolor: '#F9FAFB', 
@@ -1045,7 +1132,6 @@ function Reports() {
               </Typography>
             </Card>
 
-            {/* Card 2: Total Sale */}
             <Card sx={{ 
               p: 1.5, 
               bgcolor: '#F9FAFB', 
@@ -1069,7 +1155,6 @@ function Reports() {
               </Typography>
             </Card>
 
-            {/* Card 3: Annual Budget */}
             <Card sx={{ 
               p: 1.5, 
               bgcolor: '#F9FAFB', 
@@ -1093,7 +1178,6 @@ function Reports() {
               </Typography>
             </Card>
 
-            {/* Card 4: Variance % */}
             <Card sx={{ 
               p: 1.5, 
               borderRadius: 2, 
@@ -1120,7 +1204,6 @@ function Reports() {
               </Typography>
             </Card>
 
-            {/* Card 5: Variance RM */}
             <Card sx={{ 
               p: 1.5, 
               borderRadius: 2, 
