@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -14,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// MongoDB Connection
+// ============ LOCAL MONGODB CONNECTION ============
 mongoose.connect('mongodb://localhost:27017/fleet_database', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -120,7 +119,7 @@ const tenderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// ============ INVOICE SCHEMA - FIXED ============
+// Invoice Schema
 const invoiceSchema = new mongoose.Schema({
   invoiceNumber: { type: String, default: '' },
   billingMonth: { type: String, required: true },
@@ -522,30 +521,131 @@ app.delete('/api/budgets/:id', async (req, res) => {
   }
 });
 
-// ---------- DASHBOARD ROUTE ----------
+// ============ DASHBOARD ROUTE - FIXED ============
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const totalVessels = await Vessel.countDocuments();
-    const totalClients = await Client.countDocuments();
+    // Get ALL vessels
+    const allVessels = await Vessel.find({});
+    const totalVessels = allVessels.length;
+    
+    const activeVessels = allVessels.filter(v => 
+      v.status === 'Active' || v.status === 'Available'
+    ).length;
+    const soldVessels = allVessels.filter(v => 
+      v.status === 'Sold'
+    ).length;
+    const maintenanceVessels = allVessels.filter(v => 
+      v.status === 'Under Maintenance'
+    ).length;
+    
+    const totalClients = await Client.countDocuments({});
+    
+    // FIX 1: Count ACTIVE contracts only (status = 'Active')
     const activeContracts = await Contract.countDocuments({ status: 'Active' });
-    const totalInvoices = await Invoice.countDocuments();
-
-    const invoices = await Invoice.find();
+    
+    // Get invoices
+    const invoices = await Invoice.find({});
+    const totalInvoices = invoices.length;
     const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+    
+    const paidInvoices = invoices.filter(inv => inv.paymentStatus === 'Paid').length;
+    const submittedInvoices = invoices.filter(inv => inv.paymentStatus === 'Submitted').length;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const overdueInvoices = invoices.filter(inv => {
+      if (inv.paymentStatus === 'Paid') return false;
+      if (!inv.expectedPaymentDate) return false;
+      const expectedDate = new Date(inv.expectedPaymentDate);
+      expectedDate.setHours(0, 0, 0, 0);
+      return expectedDate < today;
+    }).length;
+    
+    const pendingInvoices = invoices.filter(inv => {
+      if (inv.paymentStatus === 'Paid') return false;
+      if (inv.expectedPaymentDate) {
+        const expectedDate = new Date(inv.expectedPaymentDate);
+        expectedDate.setHours(0, 0, 0, 0);
+        if (expectedDate < today) return false;
+      }
+      return true;
+    }).length;
+    
+    const collectionRate = totalInvoices > 0 ? ((paidInvoices / totalInvoices) * 100) : 0;
 
-    const pendingInvoices = await Invoice.countDocuments({ paymentStatus: 'Pending' });
-    const overdueInvoices = await Invoice.countDocuments({ paymentStatus: 'Overdue' });
+    // ============ UTILIZATION DATA ============
+    const utilizations = await Utilization.find({});
+    const currentYear = today.getFullYear();
+    const currentMonthIndex = today.getMonth();
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const currentMonthName = months[currentMonthIndex];
+    
+    const yearData = utilizations.filter(u => u.year === currentYear);
+    
+    const monthsToInclude = [];
+    for (const month of months) {
+      if (months.indexOf(month) < months.indexOf(currentMonthName)) {
+        monthsToInclude.push(month);
+      }
+    }
+    
+    let ytdActual = 0;
+    let ytdTotalPossibleDays = 0;
+    const allVesselIds = new Set();
+    
+    monthsToInclude.forEach(month => {
+      const monthData = yearData.filter(u => u.month === month);
+      if (monthData.length === 0) return;
+      
+      const vesselIds = new Set();
+      monthData.forEach(u => {
+        if (u.vessel) {
+          const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+          vesselIds.add(id);
+          allVesselIds.add(id);
+        }
+      });
+      
+      const vesselCount = vesselIds.size || 0;
+      if (vesselCount === 0) return;
+      
+      const daysInMonth = new Date(currentYear, months.indexOf(month) + 1, 0).getDate();
+      ytdTotalPossibleDays += vesselCount * daysInMonth;
+      
+      monthData.forEach(u => {
+        ytdActual += u.actualDays || 0;
+      });
+    });
+    
+    const ytdUtilization = ytdTotalPossibleDays > 0 
+      ? Math.min(100, (ytdActual / ytdTotalPossibleDays) * 100) 
+      : 0;
+    
+    // FIX 2: Count UNIQUE vessels (not records)
+    const totalVesselsUtil = allVesselIds.size;
 
     res.json({
       totalVessels,
+      activeVessels,
+      soldVessels,
+      maintenanceVessels,
       totalClients,
       activeContracts,
       totalInvoices,
       totalRevenue,
       pendingInvoices,
-      overdueInvoices
+      overdueInvoices,
+      paidInvoices,
+      submittedInvoices,
+      collectionRate,
+      ytdUtilization,
+      totalVesselsUtil,
+      currentMonth: currentMonthName,
+      currentYear
     });
   } catch (err) {
+    console.error('Dashboard error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -554,4 +654,5 @@ app.get('/api/dashboard', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📁 Uploads folder: ${path.join(__dirname, '../uploads')}`);
+  console.log(`✅ MongoDB connected to localhost:27017`);
 });

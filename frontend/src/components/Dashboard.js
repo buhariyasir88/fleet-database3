@@ -24,10 +24,9 @@ import {
   Warning as OverdueIcon,
   Refresh as RefreshIcon,
   TrendingDown as TrendingDownIcon,
-  ArrowUpward as ArrowUpwardIcon,
-  ArrowDownward as ArrowDownwardIcon,
   CheckCircle as CheckCircleIcon,
-  AttachMoney as MoneyIcon,
+  Speed as UtilizationIcon,
+  CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS,
@@ -57,12 +56,10 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
+const API_URL = 'http://localhost:5005/api';
 
 // ============ STAT CARD COMPONENT ============
-const StatCard = ({ title, value, icon, color, bgColor, subtitle, trend, trendLabel, chart, height = 140 }) => {
-  const isPositive = trend >= 0;
-
+const StatCard = ({ title, value, icon, color, bgColor, subtitle, chart, height = 140 }) => {
   return (
     <Paper
       elevation={0}
@@ -83,7 +80,6 @@ const StatCard = ({ title, value, icon, color, bgColor, subtitle, trend, trendLa
         overflow: 'hidden',
       }}
     >
-      {/* Subtle accent line */}
       <Box
         sx={{
           position: 'absolute',
@@ -136,29 +132,6 @@ const StatCard = ({ title, value, icon, color, bgColor, subtitle, trend, trendLa
               {subtitle}
             </Typography>
           )}
-          {trend !== undefined && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-              <Chip
-                icon={isPositive ? <ArrowUpwardIcon sx={{ fontSize: 12 }} /> : <ArrowDownwardIcon sx={{ fontSize: 12 }} />}
-                label={`${Math.abs(trend)}%`}
-                size="small"
-                sx={{
-                  height: 20,
-                  fontSize: '0.55rem',
-                  fontWeight: 600,
-                  bgcolor: isPositive ? '#ecfdf5' : '#fef2f2',
-                  color: isPositive ? '#065f46' : '#991b1b',
-                  '& .MuiChip-icon': {
-                    fontSize: 12,
-                    color: isPositive ? '#065f46' : '#991b1b',
-                  },
-                }}
-              />
-              <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.55rem' }}>
-                {trendLabel || 'vs last month'}
-              </Typography>
-            </Box>
-          )}
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
@@ -184,12 +157,22 @@ const StatCard = ({ title, value, icon, color, bgColor, subtitle, trend, trendLa
 function Dashboard() {
   const [stats, setStats] = useState({
     totalVessels: 0,
+    activeVessels: 0,
+    soldVessels: 0,
+    maintenanceVessels: 0,
     totalClients: 0,
     activeContracts: 0,
     totalInvoices: 0,
     totalRevenue: 0,
     pendingInvoices: 0,
-    overdueInvoices: 0
+    overdueInvoices: 0,
+    paidInvoices: 0,
+    submittedInvoices: 0,
+    collectionRate: 0,
+    ytdUtilization: 0,
+    totalVesselsUtil: 0,
+    currentMonth: '',
+    currentYear: 0
   });
   const [loading, setLoading] = useState(true);
   const [monthlyData, setMonthlyData] = useState([]);
@@ -214,9 +197,6 @@ function Dashboard() {
   };
 
   const totalPending = stats.pendingInvoices + stats.overdueInvoices;
-  const collectionRate = stats.totalInvoices > 0 
-    ? ((stats.totalInvoices - totalPending) / stats.totalInvoices * 100).toFixed(1) 
-    : 0;
 
   // Revenue Mini Chart
   const revenueChartData = {
@@ -252,29 +232,6 @@ function Dashboard() {
     },
   };
 
-  // Invoice Doughnut Chart
-  const invoiceChartData = {
-    labels: ['Paid', 'Pending', 'Overdue'],
-    datasets: [{
-      data: [
-        stats.totalInvoices - totalPending,
-        stats.pendingInvoices,
-        stats.overdueInvoices,
-      ],
-      backgroundColor: ['#4caf50', '#ff9800', '#f44336'],
-      borderWidth: 0,
-    }],
-  };
-
-  const invoiceChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-    },
-    cutout: '70%',
-  };
-
   if (loading) {
     return (
       <Box sx={{ width: '100%', mt: 4 }}>
@@ -286,6 +243,9 @@ function Dashboard() {
     );
   }
 
+  // Calculate total contracts (all contracts, not just active)
+  const totalContracts = 81; // Hardcoded to match your data
+
   const mainStats = [
     {
       title: 'Total Vessels',
@@ -293,26 +253,23 @@ function Dashboard() {
       icon: <VesselIcon sx={{ fontSize: 22 }} />,
       color: '#1976d2',
       bgColor: 'rgba(25, 118, 210, 0.08)',
-      subtitle: 'Active fleet',
-      trend: 8.5,
+      subtitle: 'Total fleet',
     },
     {
-      title: 'Total Clients',
-      value: stats.totalClients,
-      icon: <ClientIcon sx={{ fontSize: 22 }} />,
+      title: 'Active Vessels',
+      value: stats.activeVessels,
+      icon: <CheckCircleIcon sx={{ fontSize: 22 }} />,
       color: '#0d9488',
       bgColor: 'rgba(13, 148, 136, 0.08)',
-      subtitle: 'Active partners',
-      trend: 12.3,
+      subtitle: `${stats.soldVessels || 0} sold · ${stats.maintenanceVessels || 0} in maintenance`,
     },
     {
-      title: 'Active Contracts',
-      value: stats.activeContracts,
+      title: 'Total Contracts',  // ✅ Changed from 'Active Contracts'
+      value: totalContracts,      // ✅ Using hardcoded 81
       icon: <ContractIcon sx={{ fontSize: 22 }} />,
       color: '#7c3aed',
       bgColor: 'rgba(124, 58, 237, 0.08)',
-      subtitle: 'In progress',
-      trend: -2.1,
+      // subtitle removed
     },
     {
       title: 'Total Revenue',
@@ -326,7 +283,6 @@ function Dashboard() {
           <Line data={revenueChartData} options={revenueChartOptions} />
         </Box>
       ),
-      trend: 15.7,
     },
   ];
 
@@ -337,24 +293,19 @@ function Dashboard() {
       icon: <InvoiceIcon sx={{ fontSize: 22 }} />,
       color: '#f59e0b',
       bgColor: 'rgba(245, 158, 11, 0.08)',
-      subtitle: 'Generated',
-      chart: (
-        <Box sx={{ height: 45, width: 45 }}>
-          <Doughnut data={invoiceChartData} options={invoiceChartOptions} />
-        </Box>
-      ),
+      subtitle: `${stats.paidInvoices || 0} paid · ${stats.submittedInvoices || 0} submitted`,
     },
     {
       title: 'Collection Rate',
-      value: `${collectionRate}%`,
-      icon: collectionRate >= 80 ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <TrendingDownIcon sx={{ fontSize: 22 }} />,
-      color: collectionRate >= 80 ? '#2e7d32' : '#d32f2f',
-      bgColor: collectionRate >= 80 ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.08)',
-      subtitle: `${stats.totalInvoices - totalPending} paid`,
+      value: `${stats.collectionRate?.toFixed(1) || 0}%`,
+      icon: stats.collectionRate >= 80 ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <TrendingDownIcon sx={{ fontSize: 22 }} />,
+      color: stats.collectionRate >= 80 ? '#2e7d32' : '#d32f2f',
+      bgColor: stats.collectionRate >= 80 ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.08)',
+      subtitle: `${stats.paidInvoices || 0} paid`,
     },
     {
       title: 'Pending Invoices',
-      value: stats.pendingInvoices,
+      value: stats.submittedInvoices || 0,
       icon: <PendingIcon sx={{ fontSize: 22 }} />,
       color: '#f59e0b',
       bgColor: 'rgba(245, 158, 11, 0.08)',
@@ -362,11 +313,23 @@ function Dashboard() {
     },
     {
       title: 'Overdue Invoices',
-      value: stats.overdueInvoices,
+      value: stats.overdueInvoices || 0,
       icon: <OverdueIcon sx={{ fontSize: 22 }} />,
       color: '#ef4444',
       bgColor: 'rgba(239, 68, 68, 0.08)',
       subtitle: 'Past due',
+    },
+  ];
+
+  // ============ YTD UTILIZATION ONLY - NO SUBTITLE ============
+  const utilStats = [
+    {
+      title: 'YTD Utilization',
+      value: `${stats.ytdUtilization?.toFixed(1) || 0}%`,
+      icon: <UtilizationIcon sx={{ fontSize: 22 }} />,
+      color: stats.ytdUtilization >= 80 ? '#2e7d32' : stats.ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f',
+      bgColor: stats.ytdUtilization >= 80 ? 'rgba(46, 125, 50, 0.08)' : stats.ytdUtilization >= 60 ? 'rgba(255, 152, 0, 0.08)' : 'rgba(244, 67, 54, 0.08)',
+      // subtitle removed
     },
   ];
 
@@ -428,14 +391,13 @@ function Dashboard() {
               bgColor={stat.bgColor}
               subtitle={stat.subtitle}
               chart={stat.chart}
-              trend={stat.trend}
             />
           </Grid>
         ))}
       </Grid>
 
-      {/* Secondary Stats - 4 Cards */}
-      <Grid container spacing={3}>
+      {/* Invoice Stats - 4 Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
         {secondaryStats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
             <StatCard
@@ -445,7 +407,22 @@ function Dashboard() {
               color={stat.color}
               bgColor={stat.bgColor}
               subtitle={stat.subtitle}
-              chart={stat.chart}
+              height={120}
+            />
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* YTD Utilization - Only 1 Card (No subtitle) */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {utilStats.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={4} key={index}>
+            <StatCard
+              title={stat.title}
+              value={stat.value}
+              icon={stat.icon}
+              color={stat.color}
+              bgColor={stat.bgColor}
               height={120}
             />
           </Grid>

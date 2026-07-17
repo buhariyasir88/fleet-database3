@@ -52,6 +52,7 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   FilterList as FilterListIcon,
+  Calculate as CalculateIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS,
@@ -73,7 +74,7 @@ ChartJS.register(
   Legend
 );
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
+const API_URL = 'http://localhost:5005/api';
 
 function Utilization() {
   const [utilizations, setUtilizations] = useState([]);
@@ -130,7 +131,16 @@ function Utilization() {
 
   const handleOpenDialog = (util = null) => {
     if (util) {
-      showSnackbar('Editing is not allowed. Please add a new record instead.', 'info');
+      setEditingUtilization(util);
+      setFormData({
+        vessel: util.vessel?._id || '',
+        month: util.month || '',
+        year: util.year || new Date().getFullYear(),
+        budgetDays: util.budgetDays || '',
+        actualDays: util.actualDays || '',
+        remarks: util.remarks || '',
+      });
+      setOpenDialog(true);
       return;
     }
     setEditingUtilization(null);
@@ -164,18 +174,6 @@ function Utilization() {
         return;
       }
 
-      const existing = utilizations.find(u => 
-        u.vessel?._id === formData.vessel && 
-        u.month === formData.month && 
-        u.year === parseInt(formData.year)
-      );
-
-      if (existing) {
-        showSnackbar('A record for this vessel and month already exists.', 'warning');
-        setSaving(false);
-        return;
-      }
-
       const utilizationData = {
         vessel: formData.vessel,
         month: formData.month,
@@ -185,8 +183,23 @@ function Utilization() {
         remarks: formData.remarks || '',
       };
 
-      await axios.post(`${API_URL}/utilizations`, utilizationData);
-      showSnackbar('Utilization record created successfully! 🎉');
+      if (editingUtilization) {
+        await axios.put(`${API_URL}/utilizations/${editingUtilization._id}`, utilizationData);
+        showSnackbar('Utilization updated successfully! 🎉');
+      } else {
+        const existing = utilizations.find(u => 
+          u.vessel?._id === formData.vessel && 
+          u.month === formData.month && 
+          u.year === parseInt(formData.year)
+        );
+        if (existing) {
+          showSnackbar('A record for this vessel and month already exists.', 'warning');
+          setSaving(false);
+          return;
+        }
+        await axios.post(`${API_URL}/utilizations`, utilizationData);
+        showSnackbar('Utilization record created successfully! 🎉');
+      }
       handleCloseDialog();
       fetchData();
     } catch (error) {
@@ -210,6 +223,52 @@ function Utilization() {
     }
   };
 
+  // ============ Get days in month ============
+  const getDaysInMonth = (month, year) => {
+    return new Date(year, months.indexOf(month) + 1, 0).getDate();
+  };
+
+  // ============ MTD Utilization Calculation ============
+  const calculateUtilizationMTD = (actualDays, month, year, vesselCount = 1) => {
+    if (!month || !year) return 0;
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.toLocaleString('default', { month: 'long' });
+    
+    if (month === currentMonth && year === currentYear) {
+      const daysElapsed = today.getDate();
+      if (daysElapsed === 0) return 0;
+      const totalPossibleDays = vesselCount * daysElapsed;
+      if (totalPossibleDays === 0) return 0;
+      return Math.min(100, (actualDays / totalPossibleDays) * 100);
+    }
+    
+    const daysInMonth = getDaysInMonth(month, year);
+    if (daysInMonth === 0) return 0;
+    const totalPossibleDays = vesselCount * daysInMonth;
+    if (totalPossibleDays === 0) return 0;
+    return Math.min(100, (actualDays / totalPossibleDays) * 100);
+  };
+
+  // ============ Single vessel utilization - FIXED ============
+  const calculateSingleVesselUtilization = (actualDays, month, year) => {
+    if (!month || !year) return 0;
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.toLocaleString('default', { month: 'long' });
+    
+    if (month === currentMonth && year === currentYear) {
+      const daysElapsed = today.getDate();
+      if (daysElapsed === 0) return 0;
+      return Math.min(100, (actualDays / daysElapsed) * 100);
+    }
+    
+    const daysInMonth = getDaysInMonth(month, year);
+    if (daysInMonth === 0) return 0;
+    return Math.min(100, (actualDays / daysInMonth) * 100);
+  };
+
+  // ============ Old utilization calculation (for budget comparison only) ============
   const calculateUtilization = (budget, actual) => {
     if (budget === 0) return 0;
     return ((actual / budget) * 100);
@@ -271,10 +330,11 @@ function Utilization() {
   const groupedByMonth = filteredUtilizations.reduce((acc, u) => {
     const monthKey = `${u.month} ${u.year}`;
     if (!acc[monthKey]) {
-      acc[monthKey] = { budget: 0, actual: 0, month: u.month, year: u.year };
+      acc[monthKey] = { budget: 0, actual: 0, month: u.month, year: u.year, count: 0 };
     }
     acc[monthKey].budget += u.budgetDays || 0;
     acc[monthKey].actual += u.actualDays || 0;
+    acc[monthKey].count += 1;
     return acc;
   }, {});
 
@@ -287,10 +347,78 @@ function Utilization() {
 
   const totalBudget = filteredUtilizations.reduce((sum, u) => sum + (u.budgetDays || 0), 0);
   const totalActual = filteredUtilizations.reduce((sum, u) => sum + (u.actualDays || 0), 0);
-  const overallUtilization = totalBudget > 0 ? ((totalActual / totalBudget) * 100) : 0;
+  
+  // MTD Utilization Calculation
+  const today = new Date();
+  const currentMonth = today.toLocaleString('default', { month: 'long' });
+  const currentYear = today.getFullYear();
+  const daysElapsed = today.getDate();
 
-  const currentMonth = new Date().toLocaleString('default', { month: 'long' });
-  const currentYear = new Date().getFullYear();
+  // ============ YTD CALCULATION ============
+  const yearData = utilizations.filter(u => u.year === filterYear);
+
+  const monthGroups = {};
+  yearData.forEach(u => {
+    if (!monthGroups[u.month]) {
+      monthGroups[u.month] = [];
+    }
+    monthGroups[u.month].push(u);
+  });
+
+  const monthsToInclude = [];
+  const currentMonthIndex = today.getMonth();
+  const currentMonthName = months[currentMonthIndex];
+
+  for (const month of months) {
+    if (filterYear === currentYear) {
+      if (months.indexOf(month) < months.indexOf(currentMonthName)) {
+        monthsToInclude.push(month);
+      }
+    } else {
+      monthsToInclude.push(month);
+    }
+  }
+
+  let ytdActual = 0;
+  let ytdTotalPossibleDays = 0;
+
+  monthsToInclude.forEach(month => {
+    const monthData = monthGroups[month] || [];
+    if (monthData.length === 0) return;
+    
+    const vesselIds = new Set();
+    monthData.forEach(u => {
+      if (u.vessel) {
+        const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+        vesselIds.add(id);
+      }
+    });
+    
+    const vesselCount = vesselIds.size || 0;
+    if (vesselCount === 0) return;
+    
+    const daysInMonth = getDaysInMonth(month, filterYear);
+    ytdTotalPossibleDays += vesselCount * daysInMonth;
+    
+    monthData.forEach(u => {
+      ytdActual += u.actualDays || 0;
+    });
+  });
+
+  const ytdUtilization = ytdTotalPossibleDays > 0 
+    ? Math.min(100, (ytdActual / ytdTotalPossibleDays) * 100) 
+    : 0;
+
+  const ytdVesselSet = new Set();
+  yearData.forEach(u => {
+    if (u.vessel) {
+      const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+      ytdVesselSet.add(id);
+    }
+  });
+  const ytdVesselCount = ytdVesselSet.size;
+
+  // MTD Summary
   const mtdActual = filteredUtilizations
     .filter(u => u.month === currentMonth && u.year === currentYear)
     .reduce((sum, u) => sum + u.actualDays, 0);
@@ -646,6 +774,7 @@ function Utilization() {
           </Paper>
         </Grid>
 
+        {/* YTD UTILIZATION CARD */}
         <Grid item xs={12} sm={6} md={3}>
           <Paper
             elevation={0}
@@ -667,14 +796,14 @@ function Utilization() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Avatar
                 sx={{
-                  bgcolor: overallUtilization >= 80 ? 'rgba(46, 125, 50, 0.1)' : overallUtilization >= 60 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-                  color: overallUtilization >= 80 ? '#2e7d32' : overallUtilization >= 60 ? '#ed6c02' : '#d32f2f',
+                  bgcolor: ytdUtilization >= 80 ? 'rgba(46, 125, 50, 0.1)' : ytdUtilization >= 60 ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                  color: ytdUtilization >= 80 ? '#2e7d32' : ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f',
                   width: 44,
                   height: 44,
                   borderRadius: 2,
                 }}
               >
-                <UtilizationIcon sx={{ fontSize: 22 }} />
+                <CalculateIcon sx={{ fontSize: 22 }} />
               </Avatar>
               <Box>
                 <Typography
@@ -688,18 +817,29 @@ function Utilization() {
                     fontFamily: '"Inter", sans-serif',
                   }}
                 >
-                  Overall Utilization
+                  YTD Utilization ({filterYear})
                 </Typography>
                 <Typography
                   variant="h4"
                   sx={{
                     fontWeight: 700,
-                    color: overallUtilization >= 80 ? '#2e7d32' : overallUtilization >= 60 ? '#ed6c02' : '#d32f2f',
+                    color: ytdUtilization >= 80 ? '#2e7d32' : ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f',
                     lineHeight: 1.2,
                     fontFamily: '"Inter", sans-serif',
                   }}
                 >
-                  {overallUtilization.toFixed(1)}%
+                  {ytdUtilization.toFixed(1)}%
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#94a3b8',
+                    fontSize: '0.55rem',
+                    display: 'block',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {ytdActual.toFixed(1)}d / {ytdTotalPossibleDays.toFixed(1)}d days
                 </Typography>
               </Box>
             </Box>
@@ -728,22 +868,28 @@ function Utilization() {
           }}
         >
           <CalendarIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 1 }} />
-          MTD (Month-to-Date): {currentMonth} {currentYear}
+          MTD (Month-to-Date): {currentMonth} {currentYear} - Day {daysElapsed} of {new Date(currentYear, today.getMonth() + 1, 0).getDate()}
         </Typography>
         <Grid container spacing={3}>
-          <Grid item xs={4}>
+          <Grid item xs={3}>
             <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Actual Days</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>
               {mtdActual.toFixed(1)}d
             </Typography>
           </Grid>
-          <Grid item xs={4}>
-            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Budget</Typography>
+          <Grid item xs={3}>
+            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Budget Days</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>
               {mtdBudget.toFixed(1)}d
             </Typography>
           </Grid>
-          <Grid item xs={4}>
+          <Grid item xs={3}>
+            <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>YTD Utilization</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: ytdUtilization >= 80 ? '#2e7d32' : ytdUtilization >= 60 ? '#ed6c02' : '#d32f2f', fontFamily: '"Inter", sans-serif' }}>
+              {ytdUtilization.toFixed(1)}%
+            </Typography>
+          </Grid>
+          <Grid item xs={3}>
             <Typography variant="caption" sx={{ color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>Variance</Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, color: mtdVariance >= 0 ? '#2e7d32' : '#d32f2f', fontFamily: '"Inter", sans-serif' }}>
@@ -932,10 +1078,9 @@ function Utilization() {
         </Collapse>
       </Paper>
 
-      {/* ============ FILTER BAR WITH ALL, MONTH, AND VESSEL ============ */}
+      {/* ============ FILTER BAR ============ */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Month Filter Dropdown */}
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Filter by Month</InputLabel>
             <Select
@@ -957,7 +1102,6 @@ function Utilization() {
             </Select>
           </FormControl>
 
-          {/* Vessel Filter Dropdown */}
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Filter by Vessel</InputLabel>
             <Select
@@ -997,7 +1141,6 @@ function Utilization() {
             </Button>
           )}
 
-          {/* ============ GROUP BY BUTTONS - ALL, MONTH, VESSEL ============ */}
           <ToggleButtonGroup
             value={groupBy}
             exclusive
@@ -1017,19 +1160,31 @@ function Utilization() {
         </Box>
       </Box>
 
-      {/* Main Table */}
+      {/* ============ GROUP BY VESSEL - FIXED ============ */}
       {groupBy === 'vessel' ? (
         <Box>
           {Object.keys(groupedByVessel).sort().map(vesselName => {
             const vesselData = groupedByVessel[vesselName];
-            const utilization = calculateUtilization(vesselData.budget, vesselData.actual);
+            
+            // Calculate average utilization across all months for this vessel
+            const vesselMonths = filteredUtilizations.filter(u => u.vessel?.name === vesselName);
+            let totalUtilization = 0;
+            let monthCount = 0;
+            
+            vesselMonths.forEach(u => {
+              const util = calculateSingleVesselUtilization(u.actualDays, u.month, u.year);
+              totalUtilization += util;
+              monthCount++;
+            });
+            
+            const averageUtilization = monthCount > 0 ? (totalUtilization / monthCount) : 0;
             
             return (
               <Box key={vesselName} sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                   <Chip
-                    label={`${vesselName} - ${utilization.toFixed(1)}%`}
-                    color={utilization >= 80 ? 'success' : utilization >= 60 ? 'warning' : 'error'}
+                    label={`${vesselName} - ${averageUtilization.toFixed(1)}%`}
+                    color={averageUtilization >= 80 ? 'success' : averageUtilization >= 60 ? 'warning' : 'error'}
                     sx={{ 
                       fontWeight: 600,
                       fontFamily: '"Inter", sans-serif',
@@ -1070,8 +1225,9 @@ function Utilization() {
                           return a.year - b.year;
                         })
                         .map((u, index) => {
-                          const util = calculateUtilization(u.budgetDays, u.actualDays);
+                          const util = calculateSingleVesselUtilization(u.actualDays, u.month, u.year);
                           const variance = u.actualDays - u.budgetDays;
+                          const vesselMonthCount = filteredUtilizations.filter(u => u.vessel?.name === vesselName).length;
                           return (
                             <TableRow 
                               key={u._id} 
@@ -1079,7 +1235,7 @@ function Utilization() {
                               sx={{ 
                                 '&:hover': { bgcolor: '#F9FAFB' },
                                 transition: 'background-color 0.2s',
-                                borderBottom: index < filteredUtilizations.filter(u => u.vessel?.name === vesselName).length - 1 ? '1px solid #F3F4F6' : 'none',
+                                borderBottom: index < vesselMonthCount - 1 ? '1px solid #F3F4F6' : 'none',
                               }}
                             >
                               <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.month}</TableCell>
@@ -1100,6 +1256,11 @@ function Utilization() {
                               <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
                               <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" onClick={() => handleOpenDialog(u)} sx={{ color: '#6B7280', '&:hover': { color: '#1976d2' } }}>
+                                      <EditIcon sx={{ fontSize: 18 }} />
+                                    </IconButton>
+                                  </Tooltip>
                                   <Tooltip title="Delete">
                                     <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
                                       <DeleteIcon sx={{ fontSize: 18 }} />
@@ -1121,7 +1282,8 @@ function Utilization() {
         <Box>
           {Object.keys(groupedByMonth).sort().map(monthKey => {
             const monthData = groupedByMonth[monthKey];
-            const utilization = calculateUtilization(monthData.budget, monthData.actual);
+            const vesselCount = monthData.count || 1;
+            const utilization = calculateUtilizationMTD(monthData.actual, monthData.month, monthData.year, vesselCount);
             
             return (
               <Box key={monthKey} sx={{ mb: 3 }}>
@@ -1169,7 +1331,7 @@ function Utilization() {
                           return vesselA.localeCompare(vesselB);
                         })
                         .map((u, index) => {
-                          const util = calculateUtilization(u.budgetDays, u.actualDays);
+                          const util = calculateSingleVesselUtilization(u.actualDays, u.month, u.year);
                           const variance = u.actualDays - u.budgetDays;
                           const monthRecords = filteredUtilizations.filter(u => `${u.month} ${u.year}` === monthKey);
                           return (
@@ -1200,6 +1362,11 @@ function Utilization() {
                               <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
                               <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" onClick={() => handleOpenDialog(u)} sx={{ color: '#6B7280', '&:hover': { color: '#1976d2' } }}>
+                                      <EditIcon sx={{ fontSize: 18 }} />
+                                    </IconButton>
+                                  </Tooltip>
                                   <Tooltip title="Delete">
                                     <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
                                       <DeleteIcon sx={{ fontSize: 18 }} />
@@ -1262,7 +1429,7 @@ function Utilization() {
                     return a.year - b.year;
                   })
                   .map((u, index) => {
-                    const util = calculateUtilization(u.budgetDays, u.actualDays);
+                    const util = calculateSingleVesselUtilization(u.actualDays, u.month, u.year);
                     const variance = u.actualDays - u.budgetDays;
                     return (
                       <TableRow 
@@ -1300,6 +1467,11 @@ function Utilization() {
                         <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{u.remarks || '-'}</TableCell>
                         <TableCell sx={{ py: 2, border: 'none', textAlign: 'center' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                            <Tooltip title="Edit">
+                              <IconButton size="small" onClick={() => handleOpenDialog(u)} sx={{ color: '#6B7280', '&:hover': { color: '#1976d2' } }}>
+                                <EditIcon sx={{ fontSize: 18 }} />
+                              </IconButton>
+                            </Tooltip>
                             <Tooltip title="Delete">
                               <IconButton size="small" onClick={() => handleDelete(u._id)} sx={{ color: '#6B7280', '&:hover': { color: '#EF4444' } }}>
                                 <DeleteIcon sx={{ fontSize: 18 }} />
@@ -1362,7 +1534,7 @@ function Utilization() {
                   fontFamily: '"Inter", sans-serif',
                 }}
               >
-                Add Utilization
+                {editingUtilization ? 'Edit Utilization' : 'Add Utilization'}
               </Typography>
               <Typography 
                 variant="caption" 
@@ -1371,7 +1543,7 @@ function Utilization() {
                   fontFamily: '"Inter", sans-serif',
                 }}
               >
-                Enter utilization details below
+                {editingUtilization ? 'Update utilization details' : 'Enter utilization details below'}
               </Typography>
             </Box>
           </Box>
@@ -1766,11 +1938,12 @@ function Utilization() {
               }
             }}
           >
-            {saving ? 'Saving...' : 'Create'}
+            {saving ? 'Saving...' : editingUtilization ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

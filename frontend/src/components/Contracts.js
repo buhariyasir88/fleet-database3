@@ -55,7 +55,7 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
+const API_URL = 'http://localhost:5005/api';
 
 function Contracts() {
   const [contracts, setContracts] = useState([]);
@@ -179,48 +179,67 @@ function Contracts() {
     return (dcrNum * durationNum) + mobNum + demobNum;
   };
 
+  // FIXED: Balance calculation WITHOUT MOB (MOB already collected)
   const calculateBalanceValue = (dcr, commencementDate, duration, mob = 0, demob = 0) => {
     if (!commencementDate || !duration) return 0;
-    const start = new Date(commencementDate);
-    const now = new Date();
-    const end = new Date(start);
-    end.setDate(end.getDate() + parseInt(duration));
-    
-    if (now > end) return 0;
-    const remainingDays = Math.max(Math.ceil((end - now) / (1000 * 60 * 60 * 24)), 0);
-    const dcrNum = parseFloat(dcr) || 0;
-    const mobNum = parseFloat(mob) || 0;
-    const demobNum = parseFloat(demob) || 0;
-    return (dcrNum * remainingDays) + mobNum + demobNum;
+    try {
+      const start = new Date(commencementDate);
+      const now = new Date();
+      const end = new Date(start);
+      end.setDate(end.getDate() + parseInt(duration));
+      
+      if (now > end) return 0;
+      const remainingDays = Math.max(Math.ceil((end - now) / (1000 * 60 * 60 * 24)), 0);
+      const dcrNum = parseFloat(dcr) || 0;
+      const demobNum = parseFloat(demob) || 0;
+      // MOB is NOT included - it has already been collected
+      return (dcrNum * remainingDays) + demobNum;
+    } catch (error) {
+      console.error('Error calculating balance:', error);
+      return 0;
+    }
   };
 
   const calculateProgress = (commencementDate, duration) => {
     if (!commencementDate || !duration) return 0;
-    const start = new Date(commencementDate);
-    const now = new Date();
-    const end = new Date(start);
-    end.setDate(end.getDate() + parseInt(duration));
-    
-    if (now > end) return 100;
-    const total = parseInt(duration);
-    const passed = Math.max(Math.floor((now - start) / (1000 * 60 * 60 * 24)), 0);
-    return Math.min(Math.round((passed / total) * 100), 100);
+    try {
+      const start = new Date(commencementDate);
+      const now = new Date();
+      const end = new Date(start);
+      end.setDate(end.getDate() + parseInt(duration));
+      
+      if (now > end) return 100;
+      const total = parseInt(duration);
+      const passed = Math.max(Math.floor((now - start) / (1000 * 60 * 60 * 24)), 0);
+      return Math.min(Math.round((passed / total) * 100), 100);
+    } catch (error) {
+      console.error('Error calculating progress:', error);
+      return 0;
+    }
   };
 
   const isCompleted = (commencementDate, duration) => {
     if (!commencementDate || !duration) return false;
-    const start = new Date(commencementDate);
-    const end = new Date(start);
-    end.setDate(end.getDate() + parseInt(duration));
-    return new Date() > end;
+    try {
+      const start = new Date(commencementDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + parseInt(duration));
+      return new Date() > end;
+    } catch (error) {
+      return false;
+    }
   };
 
   const getCompletionDate = (commencementDate, duration) => {
     if (!commencementDate || !duration) return null;
-    const start = new Date(commencementDate);
-    const end = new Date(start);
-    end.setDate(end.getDate() + parseInt(duration));
-    return end;
+    try {
+      const start = new Date(commencementDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + parseInt(duration));
+      return end;
+    } catch (error) {
+      return null;
+    }
   };
 
   const getClientName = (client) => {
@@ -241,6 +260,18 @@ function Contracts() {
       return found?.name || 'N/A';
     }
     return 'N/A';
+  };
+
+  // SAFE date formatter
+  const safeFormatDate = (date) => {
+    if (!date) return 'N/A';
+    try {
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleDateString();
+    } catch (error) {
+      return 'N/A';
+    }
   };
 
   const handleSubmit = async () => {
@@ -346,7 +377,7 @@ function Contracts() {
   const activeTotalValue = activeContracts.reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingPercent = activeTotalValue > 0 ? ((totalRemainingValue / activeTotalValue) * 100).toFixed(1) : 0;
 
-  // ============ PDF EXPORT - FIXED (Respects Hidden Columns + Period Column) ============
+  // ============ PDF EXPORT - FIXED ============
   const handlePrint = () => {
     try {
       const doc = new jsPDF('landscape', 'mm', 'a4');
@@ -406,9 +437,9 @@ function Contracts() {
         if (visibleColumns.client) row.push(getClientName(c.client));
         if (visibleColumns.vessel) row.push(getVesselName(c.vessel));
         if (visibleColumns.period) {
-          const startDate = new Date(c.commencementDate);
+          const startDate = safeFormatDate(c.commencementDate);
           const endDate = getCompletionDate(c.commencementDate, c.duration);
-          row.push(`${startDate.toLocaleDateString()} to ${endDate ? endDate.toLocaleDateString() : 'N/A'}`);
+          row.push(`${startDate} to ${endDate ? safeFormatDate(endDate) : 'N/A'}`);
         }
         if (visibleColumns.duration) row.push(`${c.duration || 0} days`);
         if (visibleColumns.dcr) row.push(`RM ${(c.dcr || 0).toFixed(2)}`);
@@ -432,9 +463,9 @@ function Contracts() {
         if (visibleColumns.client) row.push(getClientName(c.client));
         if (visibleColumns.vessel) row.push(getVesselName(c.vessel));
         if (visibleColumns.period) {
-          const startDate = new Date(c.commencementDate);
+          const startDate = safeFormatDate(c.commencementDate);
           const endDate = getCompletionDate(c.commencementDate, c.duration);
-          row.push(`${startDate.toLocaleDateString()} to ${endDate ? endDate.toLocaleDateString() : 'N/A'}`);
+          row.push(`${startDate} to ${endDate ? safeFormatDate(endDate) : 'N/A'}`);
         }
         if (visibleColumns.duration) row.push(`${c.duration || 0} days`);
         if (visibleColumns.dcr) row.push(`RM ${(c.dcr || 0).toFixed(2)}`);
@@ -1027,8 +1058,8 @@ function Contracts() {
                       {visibleColumns.client && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{clientName}</TableCell>}
                       {visibleColumns.vessel && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{vesselName}</TableCell>}
                       {visibleColumns.period && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.75rem' }}>
-                        {new Date(contract.commencementDate).toLocaleDateString()} to{' '}
-                        {endDate ? endDate.toLocaleDateString() : 'N/A'}
+                        {safeFormatDate(contract.commencementDate)} to{' '}
+                        {endDate ? safeFormatDate(endDate) : 'N/A'}
                       </TableCell>}
                       {visibleColumns.duration && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{contract.duration} days</TableCell>}
                       {visibleColumns.dcr && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>RM {parseFloat(contract.dcr).toLocaleString()}</TableCell>}
@@ -1133,8 +1164,8 @@ function Contracts() {
                       {visibleColumns.client && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{clientName}</TableCell>}
                       {visibleColumns.vessel && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{vesselName}</TableCell>}
                       {visibleColumns.period && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.75rem' }}>
-                        {new Date(contract.commencementDate).toLocaleDateString()} to{' '}
-                        {endDate ? endDate.toLocaleDateString() : 'N/A'}
+                        {safeFormatDate(contract.commencementDate)} to{' '}
+                        {endDate ? safeFormatDate(endDate) : 'N/A'}
                       </TableCell>}
                       {visibleColumns.duration && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>{contract.duration} days</TableCell>}
                       {visibleColumns.dcr && <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>RM {parseFloat(contract.dcr).toLocaleString()}</TableCell>}
@@ -1193,7 +1224,7 @@ function Contracts() {
         </Paper>
       )}
 
-      {/* ============ MODERN DIALOG ============ */}
+      {/* ============ DIALOG ============ */}
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog} 

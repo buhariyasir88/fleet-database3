@@ -57,7 +57,7 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
+const API_URL = 'http://localhost:5005/api';
 
 function Reports() {
   const [loading, setLoading] = useState(true);
@@ -970,88 +970,140 @@ function Reports() {
           </Grid>
         </Box>
 
-        {/* SECTION 2: Invoice Summary */}
+        {/* SECTION 2: Invoice Summary - FIXED WITH 5 CARDS */}
         <Paper className="print-section" sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #f0f2f5' }}>
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>Invoices Summary</Typography>
           
           <Box sx={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 3,
+            gridTemplateColumns: 'repeat(5, 1fr)',
+            gap: 2,
           }}>
-            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                <InvoiceIcon sx={{ fontSize: 18, color: '#1976d2' }} />
-                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+            {/* Card 1: Total Invoices */}
+            <Card sx={{ 
+              p: 1.5, 
+              bgcolor: '#F9FAFB', 
+              borderRadius: 2, 
+              border: '1px solid #E5E7EB', 
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 80,
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                <InvoiceIcon sx={{ fontSize: 16, color: '#1976d2' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: '0.5rem', fontFamily: '"Inter", sans-serif' }}>
                   Total Invoices
                 </Typography>
               </Box>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>{filteredInvoices.length}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.2rem', fontFamily: '"Inter", sans-serif', lineHeight: 1.2 }}>
+                {filteredInvoices.length}
+              </Typography>
             </Card>
 
-            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                <RevenueIcon sx={{ fontSize: 18, color: '#2e7d32' }} />
-                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+            {/* Card 2: Total Sale */}
+            <Card sx={{ 
+              p: 1.5, 
+              bgcolor: '#F9FAFB', 
+              borderRadius: 2, 
+              border: '1px solid #E5E7EB', 
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 80,
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                <RevenueIcon sx={{ fontSize: 16, color: '#2e7d32' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: '0.5rem', fontFamily: '"Inter", sans-serif' }}>
                   Total Sale
                 </Typography>
               </Box>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>RM {totalInvoiceAmount.toLocaleString()}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', fontFamily: '"Inter", sans-serif', lineHeight: 1.2, textAlign: 'center' }}>
+                RM {totalInvoiceAmount.toLocaleString()}
+              </Typography>
             </Card>
 
-            <Card sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, border: '1px solid #E5E7EB', width: '100%' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                <RevenueIcon sx={{ fontSize: 18, color: '#e65100' }} />
-                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.6rem', fontFamily: '"Inter", sans-serif' }}>
+            {/* Card 3: Annual Budget */}
+            <Card sx={{ 
+              p: 1.5, 
+              bgcolor: '#F9FAFB', 
+              borderRadius: 2, 
+              border: '1px solid #E5E7EB', 
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 80,
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                <RevenueIcon sx={{ fontSize: 16, color: '#e65100' }} />
+                <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: '0.5rem', fontFamily: '"Inter", sans-serif' }}>
                   Annual Budget
                 </Typography>
               </Box>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem', fontFamily: '"Inter", sans-serif' }}>RM {totalBudgetAmount.toLocaleString()}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', fontFamily: '"Inter", sans-serif', lineHeight: 1.2, textAlign: 'center' }}>
+                RM {totalBudgetAmount.toLocaleString()}
+              </Typography>
             </Card>
 
+            {/* Card 4: Variance % */}
             <Card sx={{ 
-              p: 0,
-              borderRadius: 2,
+              p: 1.5, 
+              borderRadius: 2, 
               border: `1px solid ${invoiceVariance >= 0 ? '#c8e6c9' : '#ffcdd2'}`,
               bgcolor: invoiceVariance >= 0 ? '#f0f7f4' : '#fef0f2',
               width: '100%',
-              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 80,
             }}>
-              <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0, height: '100%' }}>
-                <Box sx={{ 
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  p: 2,
-                  borderRight: `1px solid ${invoiceVariance >= 0 ? '#c8e6c9' : '#ffcdd2'}`,
-                  bgcolor: invoiceVariance >= 0 ? 'rgba(76, 175, 80, 0.05)' : 'rgba(244, 67, 54, 0.05)',
-                }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.55rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
-                    Variance
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.6rem', color: invoiceVariance >= 0 ? '#4caf50' : '#f44336', fontFamily: '"Inter", sans-serif', lineHeight: 1.2 }}>
-                    {invoiceVariancePercent}%
-                  </Typography>
-                </Box>
-                <Box sx={{ 
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  p: 2,
-                  bgcolor: invoiceVariance >= 0 ? 'rgba(76, 175, 80, 0.03)' : 'rgba(244, 67, 54, 0.03)',
-                }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.55rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
-                    Variance Amount
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem', color: invoiceVariance >= 0 ? '#2e7d32' : '#c62828', fontFamily: '"Inter", sans-serif' }}>
-                    {invoiceVariance >= 0 ? '+' : ''}RM {invoiceVariance.toLocaleString()}
-                  </Typography>
-                </Box>
-              </Box>
+              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: '0.5rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
+                Variance %
+              </Typography>
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700, 
+                fontSize: '1.4rem', 
+                color: invoiceVariance >= 0 ? '#4caf50' : '#f44336', 
+                fontFamily: '"Inter", sans-serif', 
+                lineHeight: 1.2 
+              }}>
+                {invoiceVariancePercent}%
+              </Typography>
+            </Card>
+
+            {/* Card 5: Variance RM */}
+            <Card sx={{ 
+              p: 1.5, 
+              borderRadius: 2, 
+              border: `1px solid ${invoiceVariance >= 0 ? '#c8e6c9' : '#ffcdd2'}`,
+              bgcolor: invoiceVariance >= 0 ? '#f0f7f4' : '#fef0f2',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 80,
+            }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', fontSize: '0.5rem', fontFamily: '"Inter", sans-serif', color: '#6B7280', mb: 0.5 }}>
+                Variance RM
+              </Typography>
+              <Typography variant="h6" sx={{ 
+                fontWeight: 600, 
+                fontSize: '0.95rem', 
+                color: invoiceVariance >= 0 ? '#2e7d32' : '#c62828', 
+                fontFamily: '"Inter", sans-serif',
+                lineHeight: 1.2,
+                textAlign: 'center'
+              }}>
+                {invoiceVariance >= 0 ? '+' : ''}RM {invoiceVariance.toLocaleString()}
+              </Typography>
             </Card>
           </Box>
         </Paper>
