@@ -17,6 +17,7 @@ import {
   Tooltip,
   Avatar,
   Zoom,
+  Alert,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -57,10 +58,11 @@ ChartJS.register(
   Filler
 );
 
-const API_URL = 'http://localhost:5005/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Reports() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -72,8 +74,10 @@ function Reports() {
   const printRef = useRef();
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // ============ YTD UTILIZATION CALCULATION - FIXED ============
+  // ============ YTD UTILIZATION CALCULATION ============
   const calculateYTDUtilization = (utilizations, year) => {
+    if (!utilizations || utilizations.length === 0) return 0;
+    
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonthIndex = today.getMonth();
@@ -82,30 +86,27 @@ function Reports() {
     // Filter utilizations for the given year
     const yearData = utilizations.filter(u => u.year === year);
     
-    // Determine which months to include (up to previous month for current year)
+    if (yearData.length === 0) return 0;
+    
+    // Determine which months to include
     let monthsToInclude = [];
     if (year === currentYear) {
-      // For current year: include months from January to previous month (exclude current month)
       monthsToInclude = months.slice(0, currentMonthIndex);
     } else {
-      // For past years: include all months
-      monthsToInclude = months;
+      const monthsWithData = [...new Set(yearData.map(u => u.month).filter(m => m))];
+      monthsToInclude = months.filter(m => monthsWithData.includes(m));
     }
     
-    // If no months to include, return 0
     if (monthsToInclude.length === 0) return 0;
     
     let totalActual = 0;
     let totalPossibleDays = 0;
     
     monthsToInclude.forEach(month => {
-      // Get data for this month
       const monthData = yearData.filter(u => u.month === month);
-      
-      // If no data for this month, skip
       if (monthData.length === 0) return;
       
-      // Count unique vessels with data for this month
+      // Count unique vessels
       const vesselIds = new Set();
       monthData.forEach(u => {
         if (u.vessel) {
@@ -115,25 +116,70 @@ function Reports() {
       });
       
       const vesselCount = vesselIds.size || 0;
-      
-      // If no vessels, skip
       if (vesselCount === 0) return;
       
-      // Get days in this month
-      const daysInMonth = new Date(year, months.indexOf(month) + 1, 0).getDate();
-      
-      // Total possible days = vesselCount × daysInMonth
+      const monthIndex = months.indexOf(month);
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
       totalPossibleDays += vesselCount * daysInMonth;
       
-      // Sum actual days
       monthData.forEach(u => {
         totalActual += u.actualDays || 0;
       });
     });
     
-    // Calculate percentage
     if (totalPossibleDays === 0) return 0;
     return Math.min(100, (totalActual / totalPossibleDays) * 100);
+  };
+
+  // ============ Get YTD days for display ============
+  const getYTDDays = (utilizations, year) => {
+    if (!utilizations || utilizations.length === 0) return { actual: 0, possible: 0 };
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonthIndex = today.getMonth();
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const yearData = utilizations.filter(u => u.year === year);
+    if (yearData.length === 0) return { actual: 0, possible: 0 };
+    
+    let monthsToInclude = [];
+    if (year === currentYear) {
+      monthsToInclude = months.slice(0, currentMonthIndex);
+    } else {
+      const monthsWithData = [...new Set(yearData.map(u => u.month).filter(m => m))];
+      monthsToInclude = months.filter(m => monthsWithData.includes(m));
+    }
+    
+    if (monthsToInclude.length === 0) return { actual: 0, possible: 0 };
+    
+    let totalActual = 0;
+    let totalPossible = 0;
+    
+    monthsToInclude.forEach(month => {
+      const monthData = yearData.filter(u => u.month === month);
+      if (monthData.length === 0) return;
+      
+      const vesselIds = new Set();
+      monthData.forEach(u => {
+        if (u.vessel) {
+          const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
+          vesselIds.add(id);
+        }
+      });
+      const vesselCount = vesselIds.size || 0;
+      if (vesselCount === 0) return;
+      
+      const monthIndex = months.indexOf(month);
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      totalPossible += vesselCount * daysInMonth;
+      
+      monthData.forEach(u => {
+        totalActual += u.actualDays || 0;
+      });
+    });
+    
+    return { actual: totalActual, possible: totalPossible };
   };
 
   useEffect(() => {
@@ -143,6 +189,10 @@ function Reports() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('🔄 Fetching report data...');
+      
       const [invoicesRes, contractsRes, tendersRes, utilRes, budgetsRes, clientsRes, vesselsRes] = await Promise.all([
         axios.get(`${API_URL}/invoices`),
         axios.get(`${API_URL}/contracts`),
@@ -152,15 +202,27 @@ function Reports() {
         axios.get(`${API_URL}/clients`),
         axios.get(`${API_URL}/vessels`),
       ]);
-      setInvoices(invoicesRes.data);
-      setContracts(contractsRes.data);
-      setTenders(tendersRes.data);
-      setUtilizations(utilRes.data);
-      setBudgets(budgetsRes.data);
-      setClients(clientsRes.data);
-      setVessels(vesselsRes.data);
+      
+      console.log('📊 Data fetched:', {
+        invoices: invoicesRes.data?.length || 0,
+        contracts: contractsRes.data?.length || 0,
+        tenders: tendersRes.data?.length || 0,
+        utilizations: utilRes.data?.length || 0,
+        budgets: budgetsRes.data?.length || 0,
+        clients: clientsRes.data?.length || 0,
+        vessels: vesselsRes.data?.length || 0,
+      });
+      
+      setInvoices(invoicesRes.data || []);
+      setContracts(contractsRes.data || []);
+      setTenders(tendersRes.data || []);
+      setUtilizations(utilRes.data || []);
+      setBudgets(budgetsRes.data || []);
+      setClients(clientsRes.data || []);
+      setVessels(vesselsRes.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ Error fetching data:', error);
+      setError(`Failed to load report data: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -245,7 +307,6 @@ function Reports() {
     const name = getVesselName(inv.vessel);
     if (name !== 'Unknown') invVesselSet.add(name);
   });
-  if (invVesselSet.size === 0 && filteredInvoices.length > 0) invVesselSet.add('Unknown');
   const invVessels = Array.from(invVesselSet);
   
   const invData = {};
@@ -269,9 +330,13 @@ function Reports() {
   const allMonthsSet = new Set();
   Object.keys(invData).forEach(m => allMonthsSet.add(m));
   Object.keys(invBudgetData).forEach(m => allMonthsSet.add(m));
-  const finalMonths = Array.from(allMonthsSet).sort((a, b) => monthsOrder.indexOf(a) - monthsOrder.indexOf(b));
-
-  if (finalMonths.length === 0) finalMonths.push('No Data');
+  
+  // If no data, show current months
+  let finalMonths = Array.from(allMonthsSet).sort((a, b) => monthsOrder.indexOf(a) - monthsOrder.indexOf(b));
+  if (finalMonths.length === 0) {
+    const currentMonth = new Date().getMonth();
+    finalMonths = monthsOrder.slice(0, currentMonth + 1);
+  }
 
   const invDatasets = invVessels.map((vessel, i) => ({
     label: vessel,
@@ -751,67 +816,22 @@ function Reports() {
     },
   };
 
-  // ============ STATS - FIXED ============
-  // Total Contracts - use contracts.length from the fetched data
+  // ============ STATS ============
   const totalContracts = contracts.length;
-  
-  // Contract Value
   const totalContractValue = contracts.reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingContractValue = contracts.filter(c => getContractStatus(c) === 'Active').reduce((sum, c) => sum + (c.contractValue || 0), 0);
   const remainingPercent = totalContractValue > 0 ? ((remainingContractValue / totalContractValue) * 100).toFixed(1) : 0;
   
-  // FIXED: Overall Utilization - Use the SAME calculation as Utilization section
-  // Use the full utilizations array (not filtered by year) and pass the selected year
   const overallUtilization = calculateYTDUtilization(utilizations, selectedYear);
-  
-  // Calculate YTD actual and possible days for display (matching Utilization section)
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonthIndex = today.getMonth();
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  
-  // Get months to include (up to previous month for current year)
-  let monthsToIncludeDisplay = [];
-  if (selectedYear === currentYear) {
-    monthsToIncludeDisplay = months.slice(0, currentMonthIndex);
-  } else {
-    monthsToIncludeDisplay = months;
-  }
-  
-  let ytdActualDays = 0;
-  let ytdPossibleDays = 0;
-  
-  // Use ALL utilizations for the selected year
-  const yearDataAll = utilizations.filter(u => u.year === selectedYear);
-  
-  monthsToIncludeDisplay.forEach(month => {
-    const monthData = yearDataAll.filter(u => u.month === month);
-    if (monthData.length === 0) return;
-    
-    // Count unique vessels
-    const vesselIds = new Set();
-    monthData.forEach(u => {
-      if (u.vessel) {
-        const id = typeof u.vessel === 'string' ? u.vessel : u.vessel._id || u.vessel;
-        vesselIds.add(id);
-      }
-    });
-    const vesselCount = vesselIds.size || 0;
-    if (vesselCount === 0) return;
-    
-    const daysInMonth = new Date(selectedYear, months.indexOf(month) + 1, 0).getDate();
-    ytdPossibleDays += vesselCount * daysInMonth;
-    monthData.forEach(u => {
-      ytdActualDays += u.actualDays || 0;
-    });
-  });
+  const ytdDays = getYTDDays(utilizations, selectedYear);
+  const ytdActualDays = ytdDays.actual;
+  const ytdPossibleDays = ytdDays.possible;
 
   const totalInvoiceAmount = filteredInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
   const totalBudgetAmount = filteredBudgets.reduce((sum, b) => sum + (b.budgetedSale || 0), 0);
   const invoiceVariance = totalInvoiceAmount - totalBudgetAmount;
   const invoiceVariancePercent = totalBudgetAmount > 0 ? ((invoiceVariance / totalBudgetAmount) * 100).toFixed(2) : 0;
 
-  // Stats Cards Data
   const statsCards = [
     { 
       title: 'Total Contracts', 
@@ -1009,7 +1029,25 @@ function Reports() {
     }
   };
 
-  if (loading) return <LinearProgress />;
+  if (loading) {
+    return (
+      <Box sx={{ p: 4 }}>
+        <LinearProgress />
+        <Typography sx={{ mt: 2, textAlign: 'center' }}>Loading report data...</Typography>
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 4 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+        <Button variant="contained" onClick={fetchData}>Retry</Button>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ fontFamily: '"Inter", sans-serif' }}>
@@ -1017,7 +1055,10 @@ function Reports() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>Executive Report</Typography>
-          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif' }}>Generated: {new Date().toLocaleString()} | Year: {selectedYear}</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif' }}>
+            Generated: {new Date().toLocaleString()} | Year: {selectedYear}
+            {contracts.length > 0 && ` | ${contracts.length} contracts loaded`}
+          </Typography>
         </Box>
         <Box className="no-print">
           <FormControl size="small" sx={{ minWidth: 120, mr: 2 }}>
@@ -1036,7 +1077,32 @@ function Reports() {
           >
             {isPrinting ? 'Preparing...' : 'Print'}
           </Button>
-          <Button className="no-print" variant="outlined" startIcon={<DownloadIcon />} sx={{ borderRadius: 2, textTransform: 'none', fontFamily: '"Inter", sans-serif' }}>Export</Button>
+          <Button 
+            className="no-print" 
+            variant="outlined" 
+            startIcon={<DownloadIcon />} 
+            sx={{ borderRadius: 2, textTransform: 'none', fontFamily: '"Inter", sans-serif' }}
+            onClick={() => {
+              const jsonData = {
+                contracts: contracts.length,
+                tenders: tenders.length,
+                invoices: invoices.length,
+                utilizations: utilizations.length,
+                selectedYear: selectedYear,
+                totalContractValue: totalContractValue,
+                totalInvoiceAmount: totalInvoiceAmount,
+              };
+              const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `report-${selectedYear}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export
+          </Button>
         </Box>
       </Box>
 
@@ -1046,7 +1112,9 @@ function Reports() {
         {/* SECTION 1: Header + Stats Cards */}
         <Box className="print-section" sx={{ mb: 3 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#111827', fontFamily: '"Inter", sans-serif' }}>Executive Report</Typography>
-          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif', mb: 3 }}>Generated: {new Date().toLocaleString()} | Year: {selectedYear}</Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ fontFamily: '"Inter", sans-serif', mb: 3 }}>
+            Generated: {new Date().toLocaleString()} | Year: {selectedYear} | Data: {contracts.length} contracts, {tenders.length} tenders, {invoices.length} invoices
+          </Typography>
 
           <Grid container spacing={3} sx={{ mb: 4 }}>
             {statsCards.map((stat, index) => (
@@ -1123,7 +1191,9 @@ function Reports() {
 
         {/* SECTION 2: Invoice Summary */}
         <Paper className="print-section" sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #f0f2f5' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>Invoices Summary</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#111827', mb: 2, fontFamily: '"Inter", sans-serif' }}>
+            Invoices Summary ({filteredInvoices.length} invoices for {selectedYear})
+          </Typography>
           
           <Box sx={{ 
             display: 'grid', 
@@ -1421,6 +1491,15 @@ function Reports() {
               <Bar data={utilizationStackedData} options={utilizationStackedOptions} />
             </Paper>
           </Box>
+        )}
+
+        {/* No Data Message */}
+        {utilMonths.length === 0 && (
+          <Paper className="print-section" sx={{ p: 4, textAlign: 'center', borderRadius: 3, border: '1px solid #f0f2f5' }}>
+            <Typography variant="body1" color="textSecondary">
+              No utilization data available for {selectedYear}
+            </Typography>
+          </Paper>
         )}
 
         {/* Footer */}
