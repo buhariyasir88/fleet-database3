@@ -43,7 +43,7 @@ import {
   LocationOn as LocationIcon,
 } from '@mui/icons-material';
 
-const API_URL = 'https://fleet-database3.onrender.com/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Clients() {
   const [clients, setClients] = useState([]);

@@ -229,7 +229,7 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
 
     vessel.documents.push({
       name: req.body.name || req.file.originalname,
-      filePath: req.file.filename // Store only filename
+      filePath: req.file.filename
     });
     await vessel.save();
     res.json(vessel);
@@ -524,7 +524,7 @@ app.delete('/api/budgets/:id', async (req, res) => {
   }
 });
 
-// ============ DASHBOARD ROUTE - FIXED ============
+// ============ DASHBOARD ROUTE - FULLY FIXED ============
 app.get('/api/dashboard', async (req, res) => {
   try {
     // Get ALL vessels to calculate status-based counts
@@ -545,7 +545,7 @@ app.get('/api/dashboard', async (req, res) => {
     // Get total clients
     const totalClients = await Client.countDocuments({});
     
-    // Get total contracts (ALL contracts)
+    // Get total contracts (ALL contracts) - FIXED: Added this
     const totalContracts = await Contract.countDocuments({});
     
     // Count ACTIVE contracts (based on status field)
@@ -643,14 +643,22 @@ app.get('/api/dashboard', async (req, res) => {
     // Count unique vessels with utilization data (NOT records)
     const totalVesselsUtil = allVesselIds.size;
 
+    // ============ RESPONSE - ALL FIELDS ============
     res.json({
+      // Vessel stats
       totalVessels,
       activeVessels,
       soldVessels,
       maintenanceVessels,
+      
+      // Client stats
       totalClients,
+      
+      // Contract stats - FIXED: Now includes totalContracts
+      totalContracts,      // ← ADDED: This was the missing field!
       activeContracts,
-      totalContracts,      // ← ADDED: Total contracts count
+      
+      // Invoice stats
       totalInvoices,
       totalRevenue,
       pendingInvoices,
@@ -658,7 +666,8 @@ app.get('/api/dashboard', async (req, res) => {
       paidInvoices,
       submittedInvoices,
       collectionRate,
-      // Utilization data
+      
+      // Utilization stats
       ytdUtilization,
       totalVesselsUtil,
       currentMonth: currentMonthName,

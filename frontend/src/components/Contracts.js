@@ -55,7 +55,7 @@ import {
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-const API_URL = 'https://fleet-database3.onrender.com/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
 
 function Contracts() {
   const [contracts, setContracts] = useState([]);
