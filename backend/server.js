@@ -111,7 +111,7 @@ const contractSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// ===== TENDER SCHEMA (UPDATED) =====
+// ===== TENDER SCHEMA (FIXED) =====
 const tenderSchema = new mongoose.Schema({
   tenderNo: { 
     type: String, 
@@ -503,7 +503,9 @@ app.delete('/api/contracts/:id', async (req, res) => {
   }
 });
 
-// ============ TENDER ROUTES (UPDATED) ============
+// ============ TENDER ROUTES (COMPLETE FIXED) ============
+
+// GET all tenders
 app.get('/api/tenders', async (req, res) => {
   try {
     const tenders = await Tender.find({})
@@ -517,6 +519,7 @@ app.get('/api/tenders', async (req, res) => {
   }
 });
 
+// GET single tender
 app.get('/api/tenders/:id', async (req, res) => {
   try {
     const tender = await Tender.findById(req.params.id)
@@ -532,22 +535,30 @@ app.get('/api/tenders/:id', async (req, res) => {
   }
 });
 
+// CREATE tender - FIXED for 3rd party vessels
 app.post('/api/tenders', async (req, res) => {
   try {
+    console.log('📥 Creating tender:', JSON.stringify(req.body, null, 2));
+    
     if (!req.body.client || !req.body.commencementDate || !req.body.duration) {
       return res.status(400).json({ error: 'Client, commencement date, and duration are required' });
     }
 
+    // FIXED: Validate vessels - handle both owned and 3rd party
     const validVessels = req.body.proposedVessels?.filter(v => {
       if (v.isThirdParty) {
-        return v.vesselName && v.proposedRate;
+        // 3rd party: need vesselName and proposedRate
+        return v.vesselName && v.vesselName.trim() !== '' && v.proposedRate;
       } else {
+        // Owned: need vessel (ObjectId) and proposedRate
         return v.vessel && v.proposedRate;
       }
     });
 
     if (!validVessels || validVessels.length === 0) {
-      return res.status(400).json({ error: 'At least one valid vessel with rate is required' });
+      return res.status(400).json({ 
+        error: 'At least one valid vessel with rate is required.' 
+      });
     }
 
     let tenderNo = req.body.tenderNo;
@@ -564,7 +575,12 @@ app.post('/api/tenders', async (req, res) => {
       tenderNo,
       client: req.body.client,
       projectDetails: req.body.projectDetails || '',
-      proposedVessels: validVessels,
+      proposedVessels: validVessels.map(v => ({
+        vessel: v.isThirdParty ? undefined : v.vessel,
+        vesselName: v.isThirdParty ? v.vesselName : '',
+        isThirdParty: v.isThirdParty || false,
+        proposedRate: v.proposedRate || 0
+      })),
       commencementDate: req.body.commencementDate,
       duration: req.body.duration,
       completionDate: req.body.completionDate || null,
@@ -576,36 +592,50 @@ app.post('/api/tenders', async (req, res) => {
     });
 
     await tender.save();
+    console.log('✅ Tender created:', tender.tenderNo);
     res.status(201).json(tender);
   } catch (error) {
     console.error('Error creating tender:', error);
-    res.status(500).json({ error: 'Error creating tender' });
+    res.status(500).json({ error: 'Error creating tender', details: error.message });
   }
 });
 
+// UPDATE tender - FIXED for 3rd party vessels
 app.put('/api/tenders/:id', async (req, res) => {
   try {
+    console.log('📥 Updating tender:', JSON.stringify(req.body, null, 2));
+    
     const tender = await Tender.findById(req.params.id);
     if (!tender) {
       return res.status(404).json({ error: 'Tender not found' });
     }
 
+    // FIXED: Validate vessels - handle both owned and 3rd party
     const validVessels = req.body.proposedVessels?.filter(v => {
       if (v.isThirdParty) {
-        return v.vesselName && v.proposedRate;
+        // 3rd party: need vesselName and proposedRate
+        return v.vesselName && v.vesselName.trim() !== '' && v.proposedRate;
       } else {
+        // Owned: need vessel (ObjectId) and proposedRate
         return v.vessel && v.proposedRate;
       }
     });
 
     if (!validVessels || validVessels.length === 0) {
-      return res.status(400).json({ error: 'At least one valid vessel with rate is required' });
+      return res.status(400).json({ 
+        error: 'At least one valid vessel with rate is required.' 
+      });
     }
 
     tender.tenderNo = req.body.tenderNo || tender.tenderNo;
     tender.client = req.body.client || tender.client;
     tender.projectDetails = req.body.projectDetails || '';
-    tender.proposedVessels = validVessels;
+    tender.proposedVessels = validVessels.map(v => ({
+      vessel: v.isThirdParty ? undefined : v.vessel,
+      vesselName: v.isThirdParty ? v.vesselName : '',
+      isThirdParty: v.isThirdParty || false,
+      proposedRate: v.proposedRate || 0
+    }));
     tender.commencementDate = req.body.commencementDate || tender.commencementDate;
     tender.duration = req.body.duration || tender.duration;
     tender.completionDate = req.body.completionDate || null;
@@ -616,13 +646,15 @@ app.put('/api/tenders/:id', async (req, res) => {
     tender.submittedDate = req.body.submittedDate || tender.submittedDate;
 
     await tender.save();
+    console.log('✅ Tender updated:', tender.tenderNo);
     res.json(tender);
   } catch (error) {
     console.error('Error updating tender:', error);
-    res.status(500).json({ error: 'Error updating tender' });
+    res.status(500).json({ error: 'Error updating tender', details: error.message });
   }
 });
 
+// DELETE tender
 app.delete('/api/tenders/:id', async (req, res) => {
   try {
     const tender = await Tender.findByIdAndDelete(req.params.id);

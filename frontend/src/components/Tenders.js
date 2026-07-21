@@ -36,8 +36,6 @@ import {
   Menu,
   Switch,
   FormControlLabel,
-  ToggleButton,
-  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -170,7 +168,7 @@ function Tenders() {
     setSnackbar({ open: false, message: '', severity: 'success' });
   };
 
-  // ✅ Generate auto tender number suggestion
+  // Generate auto tender number suggestion
   const generateTenderNo = () => {
     const year = new Date().getFullYear();
     const count = tenders.filter(t => {
@@ -301,6 +299,7 @@ function Tenders() {
     return 'N/A';
   };
 
+  // FIXED: Get vessel display name for both owned and 3rd party
   const getVesselDisplayName = (vesselData) => {
     if (!vesselData) return 'N/A';
     
@@ -320,15 +319,23 @@ function Tenders() {
       }
     }
     
+    // Handle case where vesselData might be just a string (old data)
+    if (typeof vesselData === 'string') {
+      const found = vessels.find(v => v._id === vesselData);
+      return found?.name || vesselData;
+    }
+    
     return 'N/A';
   };
 
+  // FIXED: Get vessel type
   const getVesselType = (vesselData) => {
     if (!vesselData) return 'N/A';
     if (vesselData.isThirdParty) return '3rd Party';
     return 'Owned';
   };
 
+  // FIXED: Handle submit with proper validation for 3rd party vessels
   const handleSubmit = async () => {
     try {
       setSaving(true);
@@ -339,11 +346,13 @@ function Tenders() {
         return;
       }
 
-      // Validate vessels
+      // Validate vessels - handle both owned and 3rd party
       const validVessels = formData.proposedVessels.filter(v => {
         if (v.isThirdParty) {
-          return v.vesselName && v.proposedRate;
+          // 3rd party: need vesselName and proposedRate
+          return v.vesselName && v.vesselName.trim() !== '' && v.proposedRate;
         } else {
+          // Owned: need vessel (ObjectId) and proposedRate
           return v.vessel && v.proposedRate;
         }
       });
@@ -356,11 +365,28 @@ function Tenders() {
 
       const completionDate = calculateCompletionDate(formData.commencementDate, formData.duration);
 
+      // Clean up the data before sending
       const tenderData = {
         tenderNo: formData.tenderNo || generateTenderNo(),
         client: formData.client,
         projectDetails: formData.projectDetails || '',
-        proposedVessels: validVessels,
+        proposedVessels: validVessels.map(v => {
+          if (v.isThirdParty) {
+            // 3rd party: send vesselName and isThirdParty, no vessel (ObjectId)
+            return {
+              vesselName: v.vesselName,
+              isThirdParty: true,
+              proposedRate: parseFloat(v.proposedRate) || 0
+            };
+          } else {
+            // Owned: send vessel (ObjectId), no vesselName
+            return {
+              vessel: v.vessel,
+              isThirdParty: false,
+              proposedRate: parseFloat(v.proposedRate) || 0
+            };
+          }
+        }),
         commencementDate: formData.commencementDate,
         duration: parseFloat(formData.duration),
         completionDate: completionDate,
@@ -370,6 +396,8 @@ function Tenders() {
         remarks: formData.remarks || '',
         submittedDate: formData.submittedDate || new Date().toISOString().split('T')[0],
       };
+
+      console.log('📤 Sending tender data:', tenderData);
 
       if (editingTender) {
         await axios.put(`${API_URL}/tenders/${editingTender._id}`, tenderData);
@@ -382,6 +410,7 @@ function Tenders() {
       fetchData();
     } catch (error) {
       console.error('Error saving tender:', error);
+      console.error('Error details:', error.response?.data);
       showSnackbar(error.response?.data?.error || 'Error saving tender. Make sure backend is running.', 'error');
     } finally {
       setSaving(false);
