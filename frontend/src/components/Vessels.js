@@ -68,6 +68,7 @@ function Vessels() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [docType, setDocType] = useState('Vessel Spec');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [statusDialog, setStatusDialog] = useState(false);
   const [statusVessel, setStatusVessel] = useState(null);
   const [newStatus, setNewStatus] = useState('Active');
@@ -185,29 +186,41 @@ function Vessels() {
   };
 
   const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
   };
 
+  // ============ UPLOAD FUNCTION ============
   const handleUpload = async () => {
     if (!selectedFile) {
       showSnackbar('Please select a file', 'error');
       return;
     }
 
+    setUploading(true);
     const formData = new FormData();
     formData.append('document', selectedFile);
     formData.append('name', docType);
 
     try {
-      await axios.post(`${API_URL}/vessels/${selectedVessel._id}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      showSnackbar('Document uploaded successfully');
+      const response = await axios.post(
+        `${API_URL}/vessels/${selectedVessel._id}/documents`,
+        formData,
+        {
+          headers: { 
+            'Content-Type': 'multipart/form-data' 
+          }
+        }
+      );
+      showSnackbar('Document uploaded successfully! 🎉');
       setUploadDialog(false);
       fetchVessels();
     } catch (error) {
       console.error('Error uploading document:', error);
-      showSnackbar('Error uploading document', 'error');
+      showSnackbar(error.response?.data?.error || 'Error uploading document', 'error');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -218,9 +231,23 @@ function Vessels() {
       return;
     }
     
-    // Extract just the filename
-    const fileName = doc.filePath.split('/').pop().split('\\').pop();
-    const downloadUrl = `${API_URL.replace('/api', '')}/uploads/${encodeURIComponent(fileName)}`;
+    // Extract just the filename from the path
+    let fileName = doc.filePath;
+    // Remove any path separators
+    if (fileName.includes('/')) {
+      fileName = fileName.split('/').pop();
+    }
+    if (fileName.includes('\\')) {
+      fileName = fileName.split('\\').pop();
+    }
+    
+    // Build the URL properly
+    const baseUrl = API_URL.replace('/api', '');
+    const downloadUrl = `${baseUrl}/uploads/${encodeURIComponent(fileName)}`;
+    
+    console.log('📥 Downloading:', downloadUrl);
+    
+    // Open in new tab
     window.open(downloadUrl, '_blank');
   };
 
@@ -1008,30 +1035,143 @@ function Vessels() {
         <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
       )}
 
-      {/* ============ DIALOGS (unchanged) ============ */}
-      
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Upload Document</DialogTitle>
-        <DialogContent>
-          <FormControl fullWidth sx={{ mt: 1 }}>
-            <InputLabel>Document Type</InputLabel>
+      {/* ============ UPLOAD DIALOG (FIXED) ============ */}
+      <Dialog 
+        open={uploadDialog} 
+        onClose={() => setUploadDialog(false)} 
+        maxWidth="xs" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            padding: 0,
+            overflow: 'hidden',
+          }
+        }}
+      >
+        <Box sx={{ 
+          p: 2.5, 
+          bgcolor: '#F9FAFB', 
+          borderBottom: '1px solid #E5E7EB',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>
+            Upload Document
+          </Typography>
+          <IconButton onClick={() => setUploadDialog(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body2" sx={{ mb: 2, color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>
+            Uploading for: <strong>{selectedVessel?.name}</strong>
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Document Type</InputLabel>
             <Select
               value={docType}
               onChange={(e) => setDocType(e.target.value)}
               label="Document Type"
+              sx={{ 
+                borderRadius: 2,
+                bgcolor: '#F9FAFB',
+                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                '&:hover': { bgcolor: '#F3F4F6' },
+                '&.Mui-focused': { 
+                  bgcolor: 'white',
+                  boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                  '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                },
+              }}
             >
               <MenuItem value="Vessel Spec">Vessel Spec</MenuItem>
               <MenuItem value="GA Plan">GA Plan</MenuItem>
+              <MenuItem value="Certificate">Certificate</MenuItem>
+              <MenuItem value="Other">Other</MenuItem>
             </Select>
           </FormControl>
-          <Box sx={{ mt: 2 }}>
-            <input type="file" onChange={handleFileChange} style={{ width: '100%' }} />
+          
+          <Box 
+            sx={{ 
+              border: '2px dashed #E5E7EB', 
+              borderRadius: 2, 
+              p: 3, 
+              textAlign: 'center',
+              bgcolor: '#F9FAFB',
+              '&:hover': { borderColor: '#1976d2', bgcolor: '#F0F7FF' }
+            }}
+          >
+            <input
+              type="file"
+              onChange={handleFileChange}
+              style={{ 
+                width: '100%', 
+                padding: '10px 0',
+                cursor: 'pointer',
+                fontFamily: '"Inter", sans-serif',
+              }}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+            />
+            <Typography variant="caption" sx={{ color: '#6B7280', display: 'block', mt: 1, fontFamily: '"Inter", sans-serif' }}>
+              Supported: PDF, DOC, DOCX, JPG, PNG (Max 10MB)
+            </Typography>
           </Box>
+          
+          {selectedFile && (
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#F0FDF4', borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ color: '#15803d', fontFamily: '"Inter", sans-serif' }}>
+                ✅ {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+              </Typography>
+            </Box>
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadDialog(false)}>Cancel</Button>
-          <Button onClick={handleUpload} variant="contained">Upload</Button>
+        
+        <DialogActions sx={{ 
+          p: 2.5, 
+          pt: 0,
+          gap: 2,
+          bgcolor: '#F9FAFB',
+          borderTop: '1px solid #E5E7EB',
+        }}>
+          <Button 
+            onClick={() => setUploadDialog(false)} 
+            variant="outlined"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 3,
+              borderColor: '#E5E7EB',
+              color: '#6B7280',
+              fontFamily: '"Inter", sans-serif',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUpload} 
+            variant="contained"
+            disabled={!selectedFile || uploading}
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 4,
+              fontFamily: '"Inter", sans-serif',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+              },
+              '&:disabled': {
+                opacity: 0.6,
+              }
+            }}
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1120,7 +1260,7 @@ function Vessels() {
             >
               <MenuItem value="Active">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CheckCircleIcon sx={{ color: '#22c55e' }} />
+                  <CheckCircleIcon sx={{ color: '#22c55e', fontSize: 18 }} />
                   <Box>
                     <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Active
@@ -1133,7 +1273,7 @@ function Vessels() {
               </MenuItem>
               <MenuItem value="Available">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CheckCircleIcon sx={{ color: '#3b82f6' }} />
+                  <CheckCircleIcon sx={{ color: '#3b82f6', fontSize: 18 }} />
                   <Box>
                     <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Available
@@ -1146,7 +1286,7 @@ function Vessels() {
               </MenuItem>
               <MenuItem value="Sold">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <CancelIcon sx={{ color: '#ef4444' }} />
+                  <CancelIcon sx={{ color: '#ef4444', fontSize: 18 }} />
                   <Box>
                     <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Sold
@@ -1159,7 +1299,7 @@ function Vessels() {
               </MenuItem>
               <MenuItem value="Under Maintenance">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <PendingIcon sx={{ color: '#f59e0b' }} />
+                  <PendingIcon sx={{ color: '#f59e0b', fontSize: 18 }} />
                   <Box>
                     <Typography variant="body2" fontWeight={500} fontFamily='"Inter", sans-serif'>
                       Under Maintenance

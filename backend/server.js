@@ -22,7 +22,16 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// ============ CREATE UPLOADS FOLDER ============
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// ============ SERVE STATIC FILES (FIXED) ============
+// ✅ This serves files from the uploads directory
+app.use('/uploads', express.static(uploadDir));
 
 // ============ MONGODB CONNECTION ============
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fleet_database';
@@ -34,25 +43,28 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-// ============ CREATE UPLOADS FOLDER ============
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
 // ============ MULTER SETUP ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, JPG, PNG, and Word documents are allowed.'));
+    }
+  }
 });
 
 // ============ SCHEMAS ============
@@ -111,7 +123,7 @@ const contractSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// ===== TENDER SCHEMA (FIXED) =====
+// ===== TENDER SCHEMA =====
 const tenderSchema = new mongoose.Schema({
   tenderNo: { 
     type: String, 
@@ -398,6 +410,38 @@ app.delete('/api/vessels/:id', async (req, res) => {
   }
 });
 
+// ============ VESSEL DOCUMENT UPLOAD ROUTE ============
+app.post('/api/vessels/:id/documents', upload.single('document'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const vessel = await Vessel.findById(req.params.id);
+    if (!vessel) {
+      return res.status(404).json({ error: 'Vessel not found' });
+    }
+
+    // Add document to vessel
+    vessel.documents.push({
+      name: req.body.name || 'Document',
+      filePath: `/uploads/${req.file.filename}`,
+      uploadDate: new Date()
+    });
+
+    await vessel.save();
+    
+    const uploadedDoc = vessel.documents[vessel.documents.length - 1];
+    res.json({ 
+      message: 'Document uploaded successfully',
+      document: uploadedDoc
+    });
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    res.status(500).json({ error: 'Error uploading document' });
+  }
+});
+
 // ============ CLIENT ROUTES ============
 app.get('/api/clients', async (req, res) => {
   try {
@@ -503,9 +547,7 @@ app.delete('/api/contracts/:id', async (req, res) => {
   }
 });
 
-// ============ TENDER ROUTES (COMPLETE FIXED) ============
-
-// GET all tenders
+// ============ TENDER ROUTES ============
 app.get('/api/tenders', async (req, res) => {
   try {
     const tenders = await Tender.find({})
@@ -519,7 +561,6 @@ app.get('/api/tenders', async (req, res) => {
   }
 });
 
-// GET single tender
 app.get('/api/tenders/:id', async (req, res) => {
   try {
     const tender = await Tender.findById(req.params.id)
@@ -535,22 +576,16 @@ app.get('/api/tenders/:id', async (req, res) => {
   }
 });
 
-// CREATE tender - FIXED for 3rd party vessels
 app.post('/api/tenders', async (req, res) => {
   try {
-    console.log('📥 Creating tender:', JSON.stringify(req.body, null, 2));
-    
     if (!req.body.client || !req.body.commencementDate || !req.body.duration) {
       return res.status(400).json({ error: 'Client, commencement date, and duration are required' });
     }
 
-    // FIXED: Validate vessels - handle both owned and 3rd party
     const validVessels = req.body.proposedVessels?.filter(v => {
       if (v.isThirdParty) {
-        // 3rd party: need vesselName and proposedRate
         return v.vesselName && v.vesselName.trim() !== '' && v.proposedRate;
       } else {
-        // Owned: need vessel (ObjectId) and proposedRate
         return v.vessel && v.proposedRate;
       }
     });
@@ -592,7 +627,6 @@ app.post('/api/tenders', async (req, res) => {
     });
 
     await tender.save();
-    console.log('✅ Tender created:', tender.tenderNo);
     res.status(201).json(tender);
   } catch (error) {
     console.error('Error creating tender:', error);
@@ -600,23 +634,17 @@ app.post('/api/tenders', async (req, res) => {
   }
 });
 
-// UPDATE tender - FIXED for 3rd party vessels
 app.put('/api/tenders/:id', async (req, res) => {
   try {
-    console.log('📥 Updating tender:', JSON.stringify(req.body, null, 2));
-    
     const tender = await Tender.findById(req.params.id);
     if (!tender) {
       return res.status(404).json({ error: 'Tender not found' });
     }
 
-    // FIXED: Validate vessels - handle both owned and 3rd party
     const validVessels = req.body.proposedVessels?.filter(v => {
       if (v.isThirdParty) {
-        // 3rd party: need vesselName and proposedRate
         return v.vesselName && v.vesselName.trim() !== '' && v.proposedRate;
       } else {
-        // Owned: need vessel (ObjectId) and proposedRate
         return v.vessel && v.proposedRate;
       }
     });
@@ -646,7 +674,6 @@ app.put('/api/tenders/:id', async (req, res) => {
     tender.submittedDate = req.body.submittedDate || tender.submittedDate;
 
     await tender.save();
-    console.log('✅ Tender updated:', tender.tenderNo);
     res.json(tender);
   } catch (error) {
     console.error('Error updating tender:', error);
@@ -654,7 +681,6 @@ app.put('/api/tenders/:id', async (req, res) => {
   }
 });
 
-// DELETE tender
 app.delete('/api/tenders/:id', async (req, res) => {
   try {
     const tender = await Tender.findByIdAndDelete(req.params.id);
@@ -818,7 +844,7 @@ app.delete('/api/budgets/:id', async (req, res) => {
   }
 });
 
-// ============ FILE UPLOAD ROUTE ============
+// ============ GENERAL FILE UPLOAD ROUTE ============
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -858,4 +884,5 @@ app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 API URL: http://localhost:${PORT}/api/dashboard`);
   console.log(`📍 Test: http://localhost:${PORT}/`);
+  console.log(`📁 Uploads directory: ${uploadDir}`);
 });
