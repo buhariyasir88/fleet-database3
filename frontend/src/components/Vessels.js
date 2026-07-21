@@ -224,7 +224,7 @@ function Vessels() {
     }
   };
 
-  // ============ DOWNLOAD FUNCTION ============
+  // ============ DOWNLOAD FUNCTION (FIXED) ============
   const handleDownload = (doc) => {
     if (!doc || !doc.filePath) {
       showSnackbar('Document not found', 'error');
@@ -233,7 +233,6 @@ function Vessels() {
     
     // Extract just the filename from the path
     let fileName = doc.filePath;
-    // Remove any path separators
     if (fileName.includes('/')) {
       fileName = fileName.split('/').pop();
     }
@@ -245,7 +244,8 @@ function Vessels() {
     const baseUrl = API_URL.replace('/api', '');
     const downloadUrl = `${baseUrl}/uploads/${encodeURIComponent(fileName)}`;
     
-    console.log('📥 Downloading:', downloadUrl);
+    console.log('📥 Downloading from:', downloadUrl);
+    console.log('📄 File name:', fileName);
     
     // Open in new tab
     window.open(downloadUrl, '_blank');
@@ -1035,7 +1035,7 @@ function Vessels() {
         <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
       )}
 
-      {/* ============ UPLOAD DIALOG (FIXED) ============ */}
+      {/* ============ UPLOAD DIALOG ============ */}
       <Dialog 
         open={uploadDialog} 
         onClose={() => setUploadDialog(false)} 

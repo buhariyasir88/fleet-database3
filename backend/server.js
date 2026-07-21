@@ -23,15 +23,27 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============ CREATE UPLOADS FOLDER ============
-const uploadDir = path.join(__dirname, '../uploads');
+// ============ CREATE UPLOADS FOLDER (Render compatible) ============
+// Try multiple possible locations
+const uploadDir = path.join(__dirname, 'uploads');
+const parentUploadDir = path.join(__dirname, '../uploads');
+
+// Create both directories if they don't exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+  console.log(`📁 Created uploads directory: ${uploadDir}`);
+}
+if (!fs.existsSync(parentUploadDir)) {
+  fs.mkdirSync(parentUploadDir, { recursive: true });
+  console.log(`📁 Created uploads directory: ${parentUploadDir}`);
 }
 
 // ============ SERVE STATIC FILES (FIXED) ============
-// ✅ This serves files from the uploads directory
+// Serve from BOTH locations to be safe
 app.use('/uploads', express.static(uploadDir));
+app.use('/uploads', express.static(parentUploadDir));
+console.log(`📁 Serving uploads from: ${uploadDir}`);
+console.log(`📁 Also serving uploads from: ${parentUploadDir}`);
 
 // ============ MONGODB CONNECTION ============
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fleet_database';
@@ -46,7 +58,9 @@ mongoose.connect(MONGODB_URI, {
 // ============ MULTER SETUP ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir);
+    // Use the uploadDir that exists
+    const dest = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
+    cb(null, dest);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -56,7 +70,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -246,12 +260,28 @@ const Invoice = mongoose.model('Invoice', invoiceSchema);
 const Utilization = mongoose.model('Utilization', utilizationSchema);
 const Budget = mongoose.model('Budget', budgetSchema);
 
+// ============ DEBUG ROUTE - List uploads ============
+app.get('/api/uploads', (req, res) => {
+  const dirToCheck = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
+  fs.readdir(dirToCheck, (err, files) => {
+    if (err) {
+      return res.status(500).json({ error: 'Unable to scan directory', details: err.message });
+    }
+    res.json({ 
+      files: files || [],
+      count: files ? files.length : 0,
+      uploadDir: dirToCheck
+    });
+  });
+});
+
 // ============ TEST ROUTE ============
 app.get('/', (req, res) => {
   res.json({ 
     message: '🚀 Fleet Database API is running!',
     status: 'online',
     version: '1.0.0',
+    uploads: '/uploads',
     endpoints: {
       vessels: '/api/vessels',
       clients: '/api/clients',
@@ -260,7 +290,8 @@ app.get('/', (req, res) => {
       invoices: '/api/invoices',
       utilizations: '/api/utilizations',
       budgets: '/api/budgets',
-      dashboard: '/api/dashboard'
+      dashboard: '/api/dashboard',
+      uploads: '/api/uploads'
     }
   });
 });
@@ -422,10 +453,13 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
       return res.status(404).json({ error: 'Vessel not found' });
     }
 
+    // Determine the correct file path
+    const filePath = `/uploads/${req.file.filename}`;
+
     // Add document to vessel
     vessel.documents.push({
       name: req.body.name || 'Document',
-      filePath: `/uploads/${req.file.filename}`,
+      filePath: filePath,
       uploadDate: new Date()
     });
 
@@ -883,6 +917,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 API URL: http://localhost:${PORT}/api/dashboard`);
-  console.log(`📍 Test: http://localhost:${PORT}/`);
   console.log(`📁 Uploads directory: ${uploadDir}`);
+  console.log(`📁 Also serving from: ${parentUploadDir}`);
+  console.log(`📁 Serving uploads at: http://localhost:${PORT}/uploads/`);
 });
