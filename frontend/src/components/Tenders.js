@@ -34,6 +34,10 @@ import {
   alpha,
   Divider,
   Menu,
+  Switch,
+  FormControlLabel,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -49,6 +53,11 @@ import {
   Cancel as CancelIcon,
   Visibility as VisibilityIcon,
   ArrowDropDown as ArrowDropDownIcon,
+  Numbers as NumbersIcon,
+  DirectionsBoat as VesselIcon,
+  AddCircle as AddCircleIcon,
+  Business as BusinessIcon,
+  PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
@@ -65,9 +74,11 @@ function Tenders() {
   const [showTable, setShowTable] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState({
+    tenderNo: true,
     client: true,
     projectDetails: true,
     proposedVessel: true,
+    vesselType: true,
     proposedRate: true,
     period: true,
     duration: true,
@@ -78,9 +89,15 @@ function Tenders() {
     actions: true,
   });
   const [formData, setFormData] = useState({
+    tenderNo: '',
     client: '',
     projectDetails: '',
-    proposedVessels: [{ vessel: '', proposedRate: '' }],
+    proposedVessels: [{ 
+      vessel: '', 
+      vesselName: '',
+      isThirdParty: false,
+      proposedRate: '' 
+    }],
     commencementDate: '',
     duration: '',
     location: '',
@@ -153,13 +170,30 @@ function Tenders() {
     setSnackbar({ open: false, message: '', severity: 'success' });
   };
 
+  // ✅ Generate auto tender number suggestion
+  const generateTenderNo = () => {
+    const year = new Date().getFullYear();
+    const count = tenders.filter(t => {
+      const tYear = t.tenderNo ? parseInt(t.tenderNo.substring(0, 4)) : 0;
+      return tYear === year;
+    }).length;
+    const seq = String(count + 1).padStart(3, '0');
+    return `${year}-${seq}`;
+  };
+
   const handleOpenDialog = (tender = null) => {
     if (tender) {
       setEditingTender(tender);
       setFormData({
+        tenderNo: tender.tenderNo || '',
         client: tender.client?._id || tender.client || '',
         projectDetails: tender.projectDetails || '',
-        proposedVessels: tender.proposedVessels || [{ vessel: '', proposedRate: '' }],
+        proposedVessels: tender.proposedVessels || [{ 
+          vessel: '', 
+          vesselName: '',
+          isThirdParty: false,
+          proposedRate: '' 
+        }],
         commencementDate: tender.commencementDate?.split('T')[0] || '',
         duration: tender.duration || '',
         location: tender.location || '',
@@ -171,9 +205,15 @@ function Tenders() {
     } else {
       setEditingTender(null);
       setFormData({
+        tenderNo: generateTenderNo(),
         client: '',
         projectDetails: '',
-        proposedVessels: [{ vessel: '', proposedRate: '' }],
+        proposedVessels: [{ 
+          vessel: '', 
+          vesselName: '',
+          isThirdParty: false,
+          proposedRate: '' 
+        }],
         commencementDate: '',
         duration: '',
         location: '',
@@ -201,10 +241,23 @@ function Tenders() {
     setFormData({ ...formData, proposedVessels: updatedVessels });
   };
 
+  const handleVesselTypeToggle = (index, isThirdParty) => {
+    const updatedVessels = [...formData.proposedVessels];
+    updatedVessels[index].isThirdParty = isThirdParty;
+    updatedVessels[index].vessel = ''; // Reset vessel selection
+    updatedVessels[index].vesselName = ''; // Reset name
+    setFormData({ ...formData, proposedVessels: updatedVessels });
+  };
+
   const addVesselRow = () => {
     setFormData({
       ...formData,
-      proposedVessels: [...formData.proposedVessels, { vessel: '', proposedRate: '' }]
+      proposedVessels: [...formData.proposedVessels, { 
+        vessel: '', 
+        vesselName: '',
+        isThirdParty: false,
+        proposedRate: '' 
+      }]
     });
   };
 
@@ -248,14 +301,32 @@ function Tenders() {
     return 'N/A';
   };
 
-  const getVesselName = (vessel) => {
-    if (!vessel) return 'N/A';
-    if (vessel.name) return vessel.name;
-    if (typeof vessel === 'string') {
-      const found = vessels.find(v => v._id === vessel);
-      return found?.name || 'N/A';
+  const getVesselDisplayName = (vesselData) => {
+    if (!vesselData) return 'N/A';
+    
+    // If it's a 3rd party vessel (has vesselName)
+    if (vesselData.isThirdParty && vesselData.vesselName) {
+      return `${vesselData.vesselName} (3rd Party)`;
     }
+    
+    // If it's from our fleet
+    if (vesselData.vessel) {
+      if (typeof vesselData.vessel === 'object' && vesselData.vessel.name) {
+        return vesselData.vessel.name;
+      }
+      if (typeof vesselData.vessel === 'string') {
+        const found = vessels.find(v => v._id === vesselData.vessel);
+        return found?.name || 'N/A';
+      }
+    }
+    
     return 'N/A';
+  };
+
+  const getVesselType = (vesselData) => {
+    if (!vesselData) return 'N/A';
+    if (vesselData.isThirdParty) return '3rd Party';
+    return 'Owned';
   };
 
   const handleSubmit = async () => {
@@ -268,7 +339,15 @@ function Tenders() {
         return;
       }
 
-      const validVessels = formData.proposedVessels.filter(v => v.vessel && v.proposedRate);
+      // Validate vessels
+      const validVessels = formData.proposedVessels.filter(v => {
+        if (v.isThirdParty) {
+          return v.vesselName && v.proposedRate;
+        } else {
+          return v.vessel && v.proposedRate;
+        }
+      });
+      
       if (validVessels.length === 0) {
         showSnackbar('Please add at least one vessel with rate', 'error');
         setSaving(false);
@@ -278,6 +357,7 @@ function Tenders() {
       const completionDate = calculateCompletionDate(formData.commencementDate, formData.duration);
 
       const tenderData = {
+        tenderNo: formData.tenderNo || generateTenderNo(),
         client: formData.client,
         projectDetails: formData.projectDetails || '',
         proposedVessels: validVessels,
@@ -353,7 +433,7 @@ function Tenders() {
 
   const sortedYears = Object.keys(groupedTenders).sort((a, b) => b - a);
 
-  // Gantt Chart Data - No labels, just bars
+  // Gantt Chart Data
   const ganttData = tenders
     .filter(t => t.commencementDate && t.duration)
     .map(t => {
@@ -365,7 +445,7 @@ function Tenders() {
         start: start,
         end: end,
         clientName: getClientName(t.client),
-        vesselNames: t.proposedVessels?.map(v => getVesselName(v.vessel)).join(', ') || 'N/A',
+        vesselNames: t.proposedVessels?.map(v => getVesselDisplayName(v)).join(', ') || 'N/A',
         rates: t.proposedVessels?.map(v => v.proposedRate).join(', ') || 'N/A',
       };
     })
@@ -389,9 +469,11 @@ function Tenders() {
   };
 
   const columnDefs = [
+    { key: 'tenderNo', label: 'Tender No' },
     { key: 'client', label: 'Client/Job' },
     { key: 'projectDetails', label: 'Project Details' },
     { key: 'proposedVessel', label: 'Proposed Vessel' },
+    { key: 'vesselType', label: 'Vessel Type' },
     { key: 'proposedRate', label: 'Proposed Rate' },
     { key: 'period', label: 'Period' },
     { key: 'duration', label: 'Duration' },
@@ -518,7 +600,7 @@ function Tenders() {
         ))}
       </Grid>
 
-      {/* ============ CLEAN GANTT CHART - NO MONTHS, NO YEARS ============ */}
+      {/* Gantt Chart */}
       <Paper 
         sx={{ 
           borderRadius: 3, 
@@ -565,7 +647,7 @@ function Tenders() {
             ) : (
               <Box sx={{ width: '100%', overflow: 'hidden' }}>
                 <Box sx={{ width: '100%', position: 'relative' }}>
-                  {/* Header Row - just client and vessel labels */}
+                  {/* Header Row */}
                   <Box sx={{ display: 'flex', borderBottom: '2px solid #E5E7EB', mb: 1 }}>
                     <Box sx={{ width: 180, flexShrink: 0, py: 1 }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: '#6B7280', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif' }}>
@@ -579,7 +661,7 @@ function Tenders() {
                     </Box>
                   </Box>
                   
-                  {/* Gantt bars - no labels on top */}
+                  {/* Gantt bars */}
                   {ganttData.map((item, index) => {
                     const startOffset = Math.max((item.start - minDate) / (1000 * 60 * 60 * 24), 0);
                     const barWidth = Math.max((item.duration / totalDays) * 100, 3);
@@ -592,6 +674,19 @@ function Tenders() {
                     return (
                       <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
                         <Box sx={{ width: 180, flexShrink: 0, pr: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip 
+                              label={item.tenderNo || 'N/A'} 
+                              size="small" 
+                              sx={{ 
+                                fontSize: '0.5rem', 
+                                height: 18, 
+                                bgcolor: '#E5E7EB',
+                                fontFamily: '"Inter", sans-serif',
+                                fontWeight: 600,
+                              }} 
+                            />
+                          </Box>
                           <Typography variant="body2" noWrap sx={{ fontWeight: 600, fontSize: '0.75rem', fontFamily: '"Inter", sans-serif', color: '#111827' }}>
                             {item.clientName}
                           </Typography>
@@ -604,7 +699,7 @@ function Tenders() {
                             title={
                               <Box sx={{ p: 1.5, minWidth: 200 }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#fff', mb: 0.5, fontFamily: '"Inter", sans-serif' }}>
-                                  {item.clientName || 'N/A'}
+                                  #{item.tenderNo || 'N/A'} - {item.clientName || 'N/A'}
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: '#e0e0e0', fontSize: '0.75rem', display: 'block', fontFamily: '"Inter", sans-serif' }}>
                                   <strong>Vessel:</strong> {item.vesselNames || 'N/A'}
@@ -664,7 +759,7 @@ function Tenders() {
         </Collapse>
       </Paper>
 
-      {/* ============ COLUMN VISIBILITY ============ */}
+      {/* Column Visibility */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Tooltip title="Toggle Columns">
@@ -714,7 +809,7 @@ function Tenders() {
         </Box>
       </Box>
 
-      {/* ============ TENDERS LIST ============ */}
+      {/* Tenders List */}
       <Paper 
         sx={{ 
           borderRadius: 3, 
@@ -785,9 +880,11 @@ function Tenders() {
                     <Table size="small" sx={{ borderCollapse: 'collapse' }}>
                       <TableHead>
                         <TableRow sx={{ bgcolor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                          {visibleColumns.tenderNo && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Tender No</TableCell>}
                           {visibleColumns.client && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Client/Job</TableCell>}
                           {visibleColumns.projectDetails && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Project Details</TableCell>}
                           {visibleColumns.proposedVessel && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Proposed Vessel</TableCell>}
+                          {visibleColumns.vesselType && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Type</TableCell>}
                           {visibleColumns.proposedRate && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Proposed Rate</TableCell>}
                           {visibleColumns.period && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Period</TableCell>}
                           {visibleColumns.duration && <TableCell sx={{ fontWeight: 700, color: '#111827', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: '"Inter", sans-serif', py: 2, border: 'none' }}>Duration</TableCell>}
@@ -801,7 +898,8 @@ function Tenders() {
                       <TableBody>
                         {groupedTenders[year].map((tender) => {
                           const clientName = getClientName(tender.client);
-                          const vesselNames = tender.proposedVessels?.map(v => getVesselName(v.vessel)).join(', ') || 'N/A';
+                          const vesselNames = tender.proposedVessels?.map(v => getVesselDisplayName(v)).join(', ') || 'N/A';
+                          const vesselTypes = tender.proposedVessels?.map(v => getVesselType(v)).join(', ') || 'N/A';
                           const rates = tender.proposedVessels?.map(v => `RM ${v.proposedRate}`).join(', ') || 'N/A';
                           const completionDate = calculateCompletionDate(tender.commencementDate, tender.duration);
                           
@@ -814,6 +912,20 @@ function Tenders() {
                                   transition: 'background-color 0.2s',
                                 }}
                               >
+                                {visibleColumns.tenderNo && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif' }}>
+                                    <Chip 
+                                      label={tender.tenderNo || 'N/A'} 
+                                      size="small"
+                                      sx={{ 
+                                        fontWeight: 600, 
+                                        bgcolor: '#E5E7EB',
+                                        fontFamily: '"Inter", sans-serif',
+                                        fontSize: '0.7rem',
+                                      }}
+                                    />
+                                  </TableCell>
+                                )}
                                 {visibleColumns.client && (
                                   <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', fontWeight: 500, color: '#111827', fontSize: '0.8rem' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -828,7 +940,37 @@ function Tenders() {
                                 {visibleColumns.proposedVessel && (
                                   <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.8rem' }}>
                                     {tender.proposedVessels?.map((v, i) => (
-                                      <Chip key={i} label={getVesselName(v.vessel)} size="small" sx={{ m: 0.2, fontFamily: '"Inter", sans-serif' }} />
+                                      <Chip 
+                                        key={i} 
+                                        label={getVesselDisplayName(v)} 
+                                        size="small" 
+                                        sx={{ 
+                                          m: 0.2, 
+                                          fontFamily: '"Inter", sans-serif',
+                                          bgcolor: v.isThirdParty ? '#FEF3C7' : '#D1FAE5',
+                                          color: v.isThirdParty ? '#92400E' : '#065F46',
+                                          border: v.isThirdParty ? '1px solid #F59E0B' : '1px solid #10B981',
+                                        }}
+                                      />
+                                    ))}
+                                  </TableCell>
+                                )}
+                                {visibleColumns.vesselType && (
+                                  <TableCell sx={{ py: 2, border: 'none', fontFamily: '"Inter", sans-serif', color: '#6B7280', fontSize: '0.75rem' }}>
+                                    {tender.proposedVessels?.map((v, i) => (
+                                      <Chip 
+                                        key={i} 
+                                        label={getVesselType(v)} 
+                                        size="small"
+                                        sx={{ 
+                                          m: 0.2, 
+                                          fontFamily: '"Inter", sans-serif',
+                                          bgcolor: v.isThirdParty ? '#FEF3C7' : '#D1FAE5',
+                                          color: v.isThirdParty ? '#92400E' : '#065F46',
+                                          fontSize: '0.6rem',
+                                          height: 20,
+                                        }}
+                                      />
                                     ))}
                                   </TableCell>
                                 )}
@@ -911,6 +1053,10 @@ function Tenders() {
                                       <Box sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 2, m: 1 }}>
                                         <Grid container spacing={2}>
                                           <Grid item xs={6}>
+                                            <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Tender No:</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>{tender.tenderNo || 'N/A'}</Typography>
+                                          </Grid>
+                                          <Grid item xs={6}>
                                             <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Project Details:</Typography>
                                             <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>{tender.projectDetails || 'N/A'}</Typography>
                                           </Grid>
@@ -922,7 +1068,7 @@ function Tenders() {
                                             <Typography variant="subtitle2" sx={{ color: '#6B7280', fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>Proposed Vessels & Rates:</Typography>
                                             {tender.proposedVessels?.map((v, i) => (
                                               <Typography key={i} variant="body2" sx={{ fontFamily: '"Inter", sans-serif', color: '#111827' }}>
-                                                {getVesselName(v.vessel)}: RM {v.proposedRate}
+                                                {getVesselDisplayName(v)} [{getVesselType(v)}]: RM {v.proposedRate}
                                               </Typography>
                                             ))}
                                           </Grid>
@@ -957,7 +1103,7 @@ function Tenders() {
         </Collapse>
       </Paper>
 
-      {/* ============ MODERN DIALOG ============ */}
+      {/* ============ DIALOG WITH VESSEL TYPE TOGGLE ============ */}
       <Dialog 
         open={openDialog} 
         onClose={handleCloseDialog} 
@@ -1029,7 +1175,55 @@ function Tenders() {
 
         <DialogContent sx={{ p: 3, pt: 2.5 }}>
           <Grid container spacing={2.5}>
-            <Grid item xs={12}>
+            {/* Tender Number - Manual Entry */}
+            <Grid item xs={6}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Tender Number
+              </Typography>
+              <TextField
+                fullWidth
+                name="tenderNo"
+                value={formData.tenderNo}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="e.g., 2026-001"
+                size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            {/* Client */}
+            <Grid item xs={6}>
               <Typography 
                 variant="caption" 
                 sx={{ 
@@ -1077,6 +1271,7 @@ function Tenders() {
               </FormControl>
             </Grid>
 
+            {/* Project Details */}
             <Grid item xs={12}>
               <Typography 
                 variant="caption" 
@@ -1123,6 +1318,7 @@ function Tenders() {
               />
             </Grid>
 
+            {/* Location */}
             <Grid item xs={12}>
               <Typography 
                 variant="caption" 
@@ -1169,6 +1365,7 @@ function Tenders() {
               />
             </Grid>
 
+            {/* Proposed Vessels with Type Toggle */}
             <Grid item xs={12}>
               <Typography 
                 variant="caption" 
@@ -1185,85 +1382,166 @@ function Tenders() {
               >
                 Proposed Vessels <span style={{ color: '#EF4444' }}>*</span>
               </Typography>
+              
               {formData.proposedVessels.map((item, index) => (
-                <Grid container spacing={2} key={index} sx={{ mb: 1 }}>
-                  <Grid item xs={5}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Vessel</InputLabel>
-                      <Select
-                        value={item.vessel}
-                        onChange={(e) => handleVesselChange(index, 'vessel', e.target.value)}
-                        label="Vessel"
+                <Box key={index} sx={{ 
+                  mb: 2, 
+                  p: 2, 
+                  bgcolor: '#F9FAFB', 
+                  borderRadius: 2,
+                  border: '1px solid #E5E7EB',
+                }}>
+                  {/* Vessel Type Toggle */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>
+                      Vessel #{index + 1}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="caption" sx={{ fontFamily: '"Inter", sans-serif', color: item.isThirdParty ? '#6B7280' : '#1976d2' }}>
+                        Owned Fleet
+                      </Typography>
+                      <Switch
+                        checked={item.isThirdParty}
+                        onChange={(e) => handleVesselTypeToggle(index, e.target.checked)}
+                        size="small"
+                        sx={{
+                          '& .MuiSwitch-switchBase.Mui-checked': {
+                            color: '#F59E0B',
+                          },
+                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                            backgroundColor: '#F59E0B',
+                          },
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ fontFamily: '"Inter", sans-serif', color: item.isThirdParty ? '#F59E0B' : '#6B7280' }}>
+                        3rd Party
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    {item.isThirdParty ? (
+                      // 3rd Party Vessel - Manual Entry
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Vessel Name"
+                          value={item.vesselName}
+                          onChange={(e) => handleVesselChange(index, 'vesselName', e.target.value)}
+                          variant="outlined"
+                          placeholder="Enter 3rd party vessel name"
+                          size="small"
+                          sx={{ 
+                            '& .MuiOutlinedInput-root': { 
+                              borderRadius: 2,
+                              bgcolor: 'white',
+                              '& fieldset': { border: '1px solid #E5E7EB' },
+                              '&:hover': { borderColor: '#F59E0B' },
+                              '&.Mui-focused': { 
+                                boxShadow: '0 0 0 3px rgba(245,158,11,0.15)',
+                                '& fieldset': { border: '1px solid #F59E0B' },
+                              }
+                            },
+                            '& .MuiInputBase-input': {
+                              fontFamily: '"Inter", sans-serif',
+                              fontSize: '0.875rem',
+                              py: 1.5,
+                            },
+                          }}
+                        />
+                        <Typography variant="caption" sx={{ color: '#F59E0B', display: 'block', mt: 0.5, fontFamily: '"Inter", sans-serif' }}>
+                          <PersonAddIcon sx={{ fontSize: 12, verticalAlign: 'middle' }} /> 3rd Party Vessel
+                        </Typography>
+                      </Grid>
+                    ) : (
+                      // Owned Vessel - From Vessel List
+                      <Grid item xs={12}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Select Vessel</InputLabel>
+                          <Select
+                            value={item.vessel}
+                            onChange={(e) => handleVesselChange(index, 'vessel', e.target.value)}
+                            label="Select Vessel"
+                            sx={{ 
+                              borderRadius: 2,
+                              bgcolor: 'white',
+                              '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #E5E7EB' },
+                              '&:hover': { '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1976d2' } },
+                              '&.Mui-focused': { 
+                                boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                                '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #1976d2' },
+                              },
+                              '& .MuiSelect-select': {
+                                fontFamily: '"Inter", sans-serif',
+                                fontSize: '0.875rem',
+                                py: 1.5,
+                              },
+                            }}
+                          >
+                            <MenuItem value="">Select from Fleet</MenuItem>
+                            {vessels.map((vessel) => (
+                              <MenuItem key={vessel._id} value={vessel._id}>{vessel.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <Typography variant="caption" sx={{ color: '#1976d2', display: 'block', mt: 0.5, fontFamily: '"Inter", sans-serif' }}>
+                          <BusinessIcon sx={{ fontSize: 12, verticalAlign: 'middle' }} /> From your fleet
+                        </Typography>
+                      </Grid>
+                    )}
+
+                    <Grid item xs={6}>
+                      <TextField
+                        fullWidth
+                        label="Rate (RM)"
+                        type="number"
+                        value={item.proposedRate}
+                        onChange={(e) => handleVesselChange(index, 'proposedRate', e.target.value)}
+                        variant="outlined"
+                        size="small"
                         sx={{ 
-                          borderRadius: 2,
-                          bgcolor: '#F9FAFB',
-                          '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                          '&:hover': { bgcolor: '#F3F4F6' },
-                          '& .MuiSelect-select': {
+                          '& .MuiOutlinedInput-root': { 
+                            borderRadius: 2,
+                            bgcolor: 'white',
+                            '& fieldset': { border: '1px solid #E5E7EB' },
+                            '&:hover': { '& fieldset': { borderColor: '#1976d2' } },
+                            '&.Mui-focused': { 
+                              boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                              '& fieldset': { border: '1px solid #1976d2' },
+                            }
+                          },
+                          '& .MuiInputBase-input': {
                             fontFamily: '"Inter", sans-serif',
                             fontSize: '0.875rem',
                             py: 1.5,
                           },
                         }}
-                      >
-                        <MenuItem value="">Select Vessel</MenuItem>
-                        {vessels.map((vessel) => (
-                          <MenuItem key={vessel._id} value={vessel._id}>{vessel.name}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField
-                      fullWidth
-                      label="Rate (RM)"
-                      type="number"
-                      value={item.proposedRate}
-                      onChange={(e) => handleVesselChange(index, 'proposedRate', e.target.value)}
-                      variant="outlined"
-                      size="small"
-                      sx={{ 
-                        '& .MuiOutlinedInput-root': { 
-                          borderRadius: 2,
-                          bgcolor: '#F9FAFB',
-                          '& fieldset': { border: 'none' },
-                          '&:hover': { bgcolor: '#F3F4F6' },
-                          '&.Mui-focused': { 
-                            bgcolor: 'white',
-                            boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
-                            '& fieldset': { border: '1px solid #1976d2' },
-                          }
-                        },
-                        '& .MuiInputBase-input': {
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => removeVesselRow(index)}
+                        disabled={formData.proposedVessels.length === 1}
+                        fullWidth
+                        sx={{ 
+                          borderRadius: 2, 
+                          textTransform: 'none', 
                           fontFamily: '"Inter", sans-serif',
-                          color: '#111827',
-                          fontSize: '0.875rem',
-                          py: 1.5,
-                        },
-                      }}
-                    />
+                          borderColor: '#E5E7EB',
+                          color: '#6B7280',
+                          height: '100%',
+                          '&:hover': { borderColor: '#ef4444', color: '#ef4444', bgcolor: 'rgba(239,68,68,0.04)' },
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </Grid>
                   </Grid>
-                  <Grid item xs={3}>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => removeVesselRow(index)}
-                      disabled={formData.proposedVessels.length === 1}
-                      sx={{ 
-                        borderRadius: 2, 
-                        textTransform: 'none', 
-                        fontFamily: '"Inter", sans-serif',
-                        borderColor: '#E5E7EB',
-                        color: '#6B7280',
-                        '&:hover': { borderColor: '#ef4444', color: '#ef4444' },
-                        width: '100%',
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </Grid>
-                </Grid>
+                </Box>
               ))}
+
               <Button 
                 variant="outlined" 
                 onClick={addVesselRow} 
@@ -1282,6 +1560,7 @@ function Tenders() {
               </Button>
             </Grid>
 
+            {/* Dates */}
             <Grid item xs={6}>
               <Typography 
                 variant="caption" 
