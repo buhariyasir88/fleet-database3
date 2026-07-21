@@ -30,6 +30,9 @@ import {
   Tooltip,
   Fade,
   alpha,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -42,6 +45,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Pending as PendingIcon,
+  MoreVert as MoreVertIcon,
+  Download as DownloadIcon,
+  RemoveCircle as RemoveCircleIcon,
 } from '@mui/icons-material';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
@@ -72,6 +78,9 @@ function Vessels() {
   const [statusDialog, setStatusDialog] = useState(false);
   const [statusVessel, setStatusVessel] = useState(null);
   const [newStatus, setNewStatus] = useState('Active');
+  // ============ NEW: Document menu state ============
+  const [docMenuAnchor, setDocMenuAnchor] = useState(null);
+  const [docMenuData, setDocMenuData] = useState(null);
 
   useEffect(() => {
     fetchVessels();
@@ -224,7 +233,7 @@ function Vessels() {
     }
   };
 
-  // ============ DOWNLOAD FUNCTION (FIXED) ============
+  // ============ DOWNLOAD FUNCTION ============
   const handleDownload = (doc) => {
     if (!doc || !doc.filePath) {
       showSnackbar('Document not found', 'error');
@@ -249,6 +258,39 @@ function Vessels() {
     
     // Open in new tab
     window.open(downloadUrl, '_blank');
+  };
+
+  // ============ NEW: REMOVE DOCUMENT FUNCTION ============
+  const handleRemoveDocument = async (vesselId, docIndex) => {
+    if (!window.confirm('Are you sure you want to remove this document?')) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`${API_URL}/vessels/${vesselId}/documents/${docIndex}`);
+      showSnackbar('Document removed successfully! 🗑️');
+      fetchVessels();
+    } catch (error) {
+      console.error('Error removing document:', error);
+      showSnackbar(error.response?.data?.error || 'Error removing document', 'error');
+    }
+    handleDocMenuClose();
+  };
+
+  // ============ NEW: DOCUMENT MENU FUNCTIONS ============
+  const handleDocMenuOpen = (event, vessel, doc, docIndex) => {
+    setDocMenuAnchor(event.currentTarget);
+    setDocMenuData({ vessel, doc, docIndex });
+  };
+
+  const handleDocMenuClose = () => {
+    setDocMenuAnchor(null);
+    setDocMenuData(null);
+  };
+
+  // ============ NEW: GET VESSEL BY ID ============
+  const getVesselById = (vesselId) => {
+    return vessels.find(v => v._id === vesselId);
   };
 
   const handleOpenStatusDialog = (vessel) => {
@@ -644,25 +686,39 @@ function Vessels() {
                     />
                   </TableCell>
                   
+                  {/* ============ DOCS COLUMN WITH MENU ============ */}
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                      {vessel.documents?.map((doc, index) => (
-                        <Chip
-                          key={index}
-                          label={doc.name}
-                          size="small"
-                          onClick={() => handleDownload(doc)}
-                          sx={{ 
-                            m: 0.2,
-                            cursor: 'pointer',
-                            bgcolor: '#EEF2FF',
-                            color: '#4338CA',
-                            fontSize: '0.6rem',
-                            height: 20,
-                            fontFamily: '"Inter", sans-serif',
-                            '&:hover': { bgcolor: '#C7D2FE' }
-                          }}
-                        />
+                      {vessel.documents?.map((doc, docIndex) => (
+                        <Box key={docIndex} sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                          <Chip
+                            label={doc.name}
+                            size="small"
+                            onClick={() => handleDownload(doc)}
+                            sx={{ 
+                              m: 0.2,
+                              cursor: 'pointer',
+                              bgcolor: '#EEF2FF',
+                              color: '#4338CA',
+                              fontSize: '0.6rem',
+                              height: 20,
+                              fontFamily: '"Inter", sans-serif',
+                              '&:hover': { bgcolor: '#C7D2FE' }
+                            }}
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleDocMenuOpen(e, vessel, doc, docIndex)}
+                            sx={{ 
+                              p: 0.2,
+                              m: 0,
+                              color: '#6B7280',
+                              '&:hover': { color: '#EF4444' }
+                            }}
+                          >
+                            <MoreVertIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Box>
                       ))}
                       <Tooltip title="Upload Document">
                         <IconButton 
@@ -678,6 +734,7 @@ function Vessels() {
                       </Tooltip>
                     </Box>
                   </TableCell>
+                  
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Tooltip title="Edit Vessel">
@@ -1034,6 +1091,58 @@ function Vessels() {
         'maintenance',
         <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
       )}
+
+      {/* ============ DOCUMENT ACTION MENU ============ */}
+      <Menu
+        anchorEl={docMenuAnchor}
+        open={Boolean(docMenuAnchor)}
+        onClose={handleDocMenuClose}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+            minWidth: 200,
+            py: 1,
+          }
+        }}
+      >
+        <MenuItem 
+          onClick={() => {
+            if (docMenuData) {
+              handleDownload(docMenuData.doc);
+            }
+            handleDocMenuClose();
+          }}
+          sx={{ 
+            borderRadius: 1,
+            mx: 0.5,
+            fontFamily: '"Inter", sans-serif',
+          }}
+        >
+          <ListItemIcon>
+            <DownloadIcon fontSize="small" color="primary" />
+          </ListItemIcon>
+          <ListItemText primary="Download" />
+        </MenuItem>
+        <MenuItem 
+          onClick={() => {
+            if (docMenuData) {
+              handleRemoveDocument(docMenuData.vessel._id, docMenuData.docIndex);
+            }
+          }}
+          sx={{ 
+            borderRadius: 1,
+            mx: 0.5,
+            fontFamily: '"Inter", sans-serif',
+            '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' },
+          }}
+        >
+          <ListItemIcon>
+            <RemoveCircleIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText primary="Remove" sx={{ color: '#EF4444' }} />
+        </MenuItem>
+      </Menu>
 
       {/* ============ UPLOAD DIALOG ============ */}
       <Dialog 
