@@ -75,7 +75,6 @@ function Vessels() {
     speed: '',
     totalSeat: '',
     status: 'Active',
-    // NEW: Vessel info fields
     currentContract: '',
     location: '',
     charterer: '',
@@ -96,7 +95,6 @@ function Vessels() {
   const [newStatus, setNewStatus] = useState('Active');
   const [docMenuAnchor, setDocMenuAnchor] = useState(null);
   const [docMenuData, setDocMenuData] = useState(null);
-  // ============ NEW: Popover state ============
   const [popoverAnchor, setPopoverAnchor] = useState(null);
   const [popoverVessel, setPopoverVessel] = useState(null);
 
@@ -108,6 +106,7 @@ function Vessels() {
     try {
       setLoading(true);
       const response = await axios.get(`${API_URL}/vessels`);
+      console.log('📊 Vessels data:', response.data);
       setVessels(response.data);
     } catch (error) {
       console.error('Error fetching vessels:', error);
@@ -127,6 +126,8 @@ function Vessels() {
 
   // ============ POPOVER FUNCTIONS ============
   const handlePopoverOpen = (event, vessel) => {
+    console.log('🔍 Popover opened for vessel:', vessel.name);
+    console.log('📋 Vessel data:', vessel);
     setPopoverAnchor(event.currentTarget);
     setPopoverVessel(vessel);
   };
@@ -151,7 +152,6 @@ function Vessels() {
         speed: vessel.speed || '',
         totalSeat: vessel.totalSeat || '',
         status: vessel.status || 'Active',
-        // NEW: Populate vessel info fields
         currentContract: vessel.currentContract || '',
         location: vessel.location || '',
         charterer: vessel.charterer || '',
@@ -199,7 +199,6 @@ function Vessels() {
         return;
       }
 
-      // Prepare data with vessel info fields
       const vesselData = {
         name: formData.name,
         imoNumber: formData.imoNumber,
@@ -216,6 +215,8 @@ function Vessels() {
         nextDryDock: formData.nextDryDock,
         additionalInfo: formData.additionalInfo,
       };
+
+      console.log('📤 Saving vessel data:', vesselData);
 
       if (editingVessel) {
         await axios.put(`${API_URL}/vessels/${editingVessel._id}`, vesselData);
@@ -602,7 +603,11 @@ function Vessels() {
             </TableHead>
             
             <TableBody>
-              {vesselList.map((vessel, index) => (
+              {vesselList.map((vessel, index) => {
+                // Check if vessel has any info data
+                const hasInfo = vessel.currentContract || vessel.location || vessel.charterer || vessel.nextDryDock || vessel.additionalInfo;
+                
+                return (
                 <TableRow 
                   key={vessel._id} 
                   hover
@@ -646,11 +651,11 @@ function Vessels() {
                         {vessel.name}
                       </Typography>
                       {/* Info Icon indicator */}
-                      {(vessel.currentContract || vessel.location || vessel.charterer) && (
+                      {hasInfo && (
                         <InfoIcon 
                           sx={{ 
                             fontSize: 14, 
-                            color: '#94a3b8',
+                            color: '#1976d2',
                             cursor: 'help',
                           }}
                           onMouseEnter={(e) => handlePopoverOpen(e, vessel)}
@@ -844,7 +849,7 @@ function Vessels() {
                     </Box>
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
         </TableContainer>
@@ -2263,7 +2268,7 @@ function Vessels() {
               />
             </Grid>
 
-            {/* ============ NEW: VESSEL INFO FIELDS ============ */}
+            {/* ============ VESSEL INFO FIELDS ============ */}
             <Grid item xs={12}>
               <Typography 
                 variant="caption" 
