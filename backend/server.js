@@ -23,7 +23,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============ CREATE UPLOADS FOLDER ============
+// ============ CREATE UPLOADS FOLDER (for backward compatibility) ============
 const uploadDir = path.join(__dirname, 'uploads');
 const parentUploadDir = path.join(__dirname, '../uploads');
 
@@ -51,7 +51,7 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-// ============ MULTER SETUP ============
+// ============ MULTER SETUP (for file uploads - backward compatibility) ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dest = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
@@ -78,7 +78,7 @@ const upload = multer({
 
 // ============ SCHEMAS ============
 
-// ===== VESSEL SCHEMA (UPDATED WITH ALL FIELDS) =====
+// ===== VESSEL SCHEMA =====
 const vesselSchema = new mongoose.Schema({
   name: { type: String, required: true },
   imoNumber: { type: String, default: '' },
@@ -94,17 +94,11 @@ const vesselSchema = new mongoose.Schema({
     enum: ['Active', 'Available', 'Sold', 'Under Maintenance'], 
     default: 'Available' 
   },
-  // VESSEL INFO FIELDS
-  currentContract: { type: String, default: '' },
-  location: { type: String, default: '' },
-  charterer: { type: String, default: '' },
-  nextDryDock: { type: String, default: '' },
-  additionalInfo: { type: String, default: '' },
   documents: [{
     name: String,
     filePath: String,
-    url: String,
-    isLink: { type: Boolean, default: false },
+    url: String,        // NEW: For link-based documents
+    isLink: { type: Boolean, default: false }, // NEW: Flag for link-based documents
     uploadDate: { type: Date, default: Date.now }
   }],
   createdAt: { type: Date, default: Date.now }
@@ -386,12 +380,9 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 // ============ VESSEL ROUTES ============
-
-// GET all vessels - NOW INCLUDES ALL NEW FIELDS
 app.get('/api/vessels', async (req, res) => {
   try {
     const vessels = await Vessel.find({}).sort({ name: 1 });
-    console.log(`📊 Returning ${vessels.length} vessels with info fields`);
     res.json(vessels);
   } catch (error) {
     console.error('Error fetching vessels:', error);
@@ -399,45 +390,10 @@ app.get('/api/vessels', async (req, res) => {
   }
 });
 
-// GET single vessel - NOW INCLUDES ALL NEW FIELDS
-app.get('/api/vessels/:id', async (req, res) => {
-  try {
-    const vessel = await Vessel.findById(req.params.id);
-    if (!vessel) {
-      return res.status(404).json({ error: 'Vessel not found' });
-    }
-    res.json(vessel);
-  } catch (error) {
-    console.error('Error fetching vessel:', error);
-    res.status(500).json({ error: 'Error fetching vessel' });
-  }
-});
-
-// CREATE vessel - NOW INCLUDES ALL NEW FIELDS
 app.post('/api/vessels', async (req, res) => {
   try {
-    console.log('📝 Creating vessel with data:', req.body);
-    
-    const vessel = new Vessel({
-      name: req.body.name,
-      imoNumber: req.body.imoNumber || '',
-      indType: req.body.indType || '',
-      flag: req.body.flag || '',
-      year: req.body.year || 0,
-      grt: req.body.grt || 0,
-      dwt: req.body.dwt || 0,
-      speed: req.body.speed || '',
-      totalSeat: req.body.totalSeat || 0,
-      status: req.body.status || 'Available',
-      // VESSEL INFO FIELDS
-      currentContract: req.body.currentContract || '',
-      location: req.body.location || '',
-      charterer: req.body.charterer || '',
-      nextDryDock: req.body.nextDryDock || '',
-      additionalInfo: req.body.additionalInfo || '',
-    });
+    const vessel = new Vessel(req.body);
     await vessel.save();
-    console.log('✅ Vessel created:', vessel.name);
     res.status(201).json(vessel);
   } catch (error) {
     console.error('Error creating vessel:', error);
@@ -445,44 +401,25 @@ app.post('/api/vessels', async (req, res) => {
   }
 });
 
-// UPDATE vessel - NOW INCLUDES ALL NEW FIELDS
 app.put('/api/vessels/:id', async (req, res) => {
   try {
-    console.log('📝 Updating vessel with data:', req.body);
-    
     const vessel = await Vessel.findByIdAndUpdate(
       req.params.id,
       {
         name: req.body.name,
-        imoNumber: req.body.imoNumber || '',
-        indType: req.body.indType || '',
-        flag: req.body.flag || '',
-        year: req.body.year || 0,
-        grt: req.body.grt || 0,
-        dwt: req.body.dwt || 0,
-        speed: req.body.speed || '',
-        totalSeat: req.body.totalSeat || 0,
-        status: req.body.status || 'Available',
-        // VESSEL INFO FIELDS
-        currentContract: req.body.currentContract || '',
-        location: req.body.location || '',
-        charterer: req.body.charterer || '',
-        nextDryDock: req.body.nextDryDock || '',
-        additionalInfo: req.body.additionalInfo || '',
+        imoNumber: req.body.imoNumber,
+        indType: req.body.indType,
+        flag: req.body.flag,
+        year: req.body.year,
+        grt: req.body.grt,
+        dwt: req.body.dwt,
+        speed: req.body.speed,
+        totalSeat: req.body.totalSeat,
+        status: req.body.status || 'Available'
       },
       { new: true, runValidators: true }
     );
-    if (!vessel) {
-      return res.status(404).json({ error: 'Vessel not found' });
-    }
-    console.log('✅ Vessel updated:', vessel.name);
-    console.log('📋 Vessel info:', {
-      currentContract: vessel.currentContract,
-      location: vessel.location,
-      charterer: vessel.charterer,
-      nextDryDock: vessel.nextDryDock,
-      additionalInfo: vessel.additionalInfo
-    });
+    if (!vessel) return res.status(404).json({ error: 'Vessel not found' });
     res.json(vessel);
   } catch (error) {
     console.error('Error updating vessel:', error);
@@ -490,7 +427,6 @@ app.put('/api/vessels/:id', async (req, res) => {
   }
 });
 
-// DELETE vessel
 app.delete('/api/vessels/:id', async (req, res) => {
   try {
     const vessel = await Vessel.findByIdAndDelete(req.params.id);
@@ -504,7 +440,7 @@ app.delete('/api/vessels/:id', async (req, res) => {
 
 // ============ VESSEL DOCUMENT ROUTES ============
 
-// ===== ADD LINK DOCUMENT =====
+// ===== ADD LINK DOCUMENT (NEW) =====
 app.post('/api/vessels/:id/documents', async (req, res) => {
   try {
     const vessel = await Vessel.findById(req.params.id);
