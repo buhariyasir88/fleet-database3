@@ -78,7 +78,7 @@ const upload = multer({
 
 // ============ SCHEMAS ============
 
-// ===== VESSEL SCHEMA (UPDATED) =====
+// ===== VESSEL SCHEMA (UPDATED WITH ALL FIELDS) =====
 const vesselSchema = new mongoose.Schema({
   name: { type: String, required: true },
   imoNumber: { type: String, default: '' },
@@ -94,7 +94,7 @@ const vesselSchema = new mongoose.Schema({
     enum: ['Active', 'Available', 'Sold', 'Under Maintenance'], 
     default: 'Available' 
   },
-  // NEW: Vessel Info Fields
+  // VESSEL INFO FIELDS
   currentContract: { type: String, default: '' },
   location: { type: String, default: '' },
   charterer: { type: String, default: '' },
@@ -386,9 +386,12 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 // ============ VESSEL ROUTES ============
+
+// GET all vessels - NOW INCLUDES ALL NEW FIELDS
 app.get('/api/vessels', async (req, res) => {
   try {
     const vessels = await Vessel.find({}).sort({ name: 1 });
+    console.log(`📊 Returning ${vessels.length} vessels with info fields`);
     res.json(vessels);
   } catch (error) {
     console.error('Error fetching vessels:', error);
@@ -396,8 +399,25 @@ app.get('/api/vessels', async (req, res) => {
   }
 });
 
+// GET single vessel - NOW INCLUDES ALL NEW FIELDS
+app.get('/api/vessels/:id', async (req, res) => {
+  try {
+    const vessel = await Vessel.findById(req.params.id);
+    if (!vessel) {
+      return res.status(404).json({ error: 'Vessel not found' });
+    }
+    res.json(vessel);
+  } catch (error) {
+    console.error('Error fetching vessel:', error);
+    res.status(500).json({ error: 'Error fetching vessel' });
+  }
+});
+
+// CREATE vessel - NOW INCLUDES ALL NEW FIELDS
 app.post('/api/vessels', async (req, res) => {
   try {
+    console.log('📝 Creating vessel with data:', req.body);
+    
     const vessel = new Vessel({
       name: req.body.name,
       imoNumber: req.body.imoNumber || '',
@@ -409,7 +429,7 @@ app.post('/api/vessels', async (req, res) => {
       speed: req.body.speed || '',
       totalSeat: req.body.totalSeat || 0,
       status: req.body.status || 'Available',
-      // NEW: Vessel info fields
+      // VESSEL INFO FIELDS
       currentContract: req.body.currentContract || '',
       location: req.body.location || '',
       charterer: req.body.charterer || '',
@@ -417,6 +437,7 @@ app.post('/api/vessels', async (req, res) => {
       additionalInfo: req.body.additionalInfo || '',
     });
     await vessel.save();
+    console.log('✅ Vessel created:', vessel.name);
     res.status(201).json(vessel);
   } catch (error) {
     console.error('Error creating vessel:', error);
@@ -424,8 +445,11 @@ app.post('/api/vessels', async (req, res) => {
   }
 });
 
+// UPDATE vessel - NOW INCLUDES ALL NEW FIELDS
 app.put('/api/vessels/:id', async (req, res) => {
   try {
+    console.log('📝 Updating vessel with data:', req.body);
+    
     const vessel = await Vessel.findByIdAndUpdate(
       req.params.id,
       {
@@ -439,7 +463,7 @@ app.put('/api/vessels/:id', async (req, res) => {
         speed: req.body.speed || '',
         totalSeat: req.body.totalSeat || 0,
         status: req.body.status || 'Available',
-        // NEW: Vessel info fields
+        // VESSEL INFO FIELDS
         currentContract: req.body.currentContract || '',
         location: req.body.location || '',
         charterer: req.body.charterer || '',
@@ -448,7 +472,17 @@ app.put('/api/vessels/:id', async (req, res) => {
       },
       { new: true, runValidators: true }
     );
-    if (!vessel) return res.status(404).json({ error: 'Vessel not found' });
+    if (!vessel) {
+      return res.status(404).json({ error: 'Vessel not found' });
+    }
+    console.log('✅ Vessel updated:', vessel.name);
+    console.log('📋 Vessel info:', {
+      currentContract: vessel.currentContract,
+      location: vessel.location,
+      charterer: vessel.charterer,
+      nextDryDock: vessel.nextDryDock,
+      additionalInfo: vessel.additionalInfo
+    });
     res.json(vessel);
   } catch (error) {
     console.error('Error updating vessel:', error);
@@ -456,6 +490,7 @@ app.put('/api/vessels/:id', async (req, res) => {
   }
 });
 
+// DELETE vessel
 app.delete('/api/vessels/:id', async (req, res) => {
   try {
     const vessel = await Vessel.findByIdAndDelete(req.params.id);
