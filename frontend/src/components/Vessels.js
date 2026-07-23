@@ -33,6 +33,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  Popover,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -50,6 +51,11 @@ import {
   RemoveCircle as RemoveCircleIcon,
   Link as LinkIcon,
   OpenInNew as OpenInNewIcon,
+  Info as InfoIcon,
+  LocationOn as LocationIcon,
+  Business as BusinessIcon,
+  CalendarToday as CalendarIcon,
+  Anchor as AnchorIcon,
 } from '@mui/icons-material';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
@@ -69,9 +75,14 @@ function Vessels() {
     speed: '',
     totalSeat: '',
     status: 'Active',
+    // NEW: Vessel info fields
+    currentContract: '',
+    location: '',
+    charterer: '',
+    nextDryDock: '',
+    additionalInfo: '',
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  // ============ NEW: Link Dialog state ============
   const [linkDialog, setLinkDialog] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState(null);
   const [linkData, setLinkData] = useState({
@@ -85,6 +96,9 @@ function Vessels() {
   const [newStatus, setNewStatus] = useState('Active');
   const [docMenuAnchor, setDocMenuAnchor] = useState(null);
   const [docMenuData, setDocMenuData] = useState(null);
+  // ============ NEW: Popover state ============
+  const [popoverAnchor, setPopoverAnchor] = useState(null);
+  const [popoverVessel, setPopoverVessel] = useState(null);
 
   useEffect(() => {
     fetchVessels();
@@ -111,6 +125,19 @@ function Vessels() {
     setSnackbar({ open: false, message: '', severity: 'success' });
   };
 
+  // ============ POPOVER FUNCTIONS ============
+  const handlePopoverOpen = (event, vessel) => {
+    setPopoverAnchor(event.currentTarget);
+    setPopoverVessel(vessel);
+  };
+
+  const handlePopoverClose = () => {
+    setPopoverAnchor(null);
+    setPopoverVessel(null);
+  };
+
+  const isPopoverOpen = Boolean(popoverAnchor);
+
   const handleOpenDialog = (vessel = null) => {
     if (vessel) {
       setEditingVessel(vessel);
@@ -124,6 +151,12 @@ function Vessels() {
         speed: vessel.speed || '',
         totalSeat: vessel.totalSeat || '',
         status: vessel.status || 'Active',
+        // NEW: Populate vessel info fields
+        currentContract: vessel.currentContract || '',
+        location: vessel.location || '',
+        charterer: vessel.charterer || '',
+        nextDryDock: vessel.nextDryDock || '',
+        additionalInfo: vessel.additionalInfo || '',
       });
     } else {
       setEditingVessel(null);
@@ -137,6 +170,11 @@ function Vessels() {
         speed: '',
         totalSeat: '',
         status: 'Active',
+        currentContract: '',
+        location: '',
+        charterer: '',
+        nextDryDock: '',
+        additionalInfo: '',
       });
     }
     setOpenDialog(true);
@@ -161,11 +199,29 @@ function Vessels() {
         return;
       }
 
+      // Prepare data with vessel info fields
+      const vesselData = {
+        name: formData.name,
+        imoNumber: formData.imoNumber,
+        indType: formData.indType,
+        flag: formData.flag,
+        year: formData.year,
+        grt: formData.grt,
+        speed: formData.speed,
+        totalSeat: formData.totalSeat,
+        status: formData.status,
+        currentContract: formData.currentContract,
+        location: formData.location,
+        charterer: formData.charterer,
+        nextDryDock: formData.nextDryDock,
+        additionalInfo: formData.additionalInfo,
+      };
+
       if (editingVessel) {
-        await axios.put(`${API_URL}/vessels/${editingVessel._id}`, formData);
+        await axios.put(`${API_URL}/vessels/${editingVessel._id}`, vesselData);
         showSnackbar('Vessel updated successfully! 🎉');
       } else {
-        await axios.post(`${API_URL}/vessels`, formData);
+        await axios.post(`${API_URL}/vessels`, vesselData);
         showSnackbar('Vessel created successfully! 🎉');
       }
       handleCloseDialog();
@@ -214,14 +270,12 @@ function Vessels() {
     setLinkData({ ...linkData, [e.target.name]: e.target.value });
   };
 
-  // ============ ADD LINK FUNCTION ============
   const handleAddLink = async () => {
     if (!linkData.url.trim()) {
       showSnackbar('Please enter a valid URL', 'error');
       return;
     }
 
-    // Validate URL
     try {
       new URL(linkData.url);
     } catch (e) {
@@ -231,7 +285,7 @@ function Vessels() {
 
     setSavingLink(true);
     try {
-      const response = await axios.post(
+      await axios.post(
         `${API_URL}/vessels/${selectedVessel._id}/documents`,
         {
           name: linkData.name,
@@ -250,7 +304,6 @@ function Vessels() {
     }
   };
 
-  // ============ OPEN LINK FUNCTION ============
   const handleOpenLink = (doc) => {
     if (!doc || !doc.url) {
       showSnackbar('No link available', 'error');
@@ -259,7 +312,6 @@ function Vessels() {
     window.open(doc.url, '_blank');
   };
 
-  // ============ REMOVE DOCUMENT FUNCTION ============
   const handleRemoveDocument = async (vesselId, docIndex) => {
     if (!window.confirm('Are you sure you want to remove this document?')) {
       return;
@@ -276,7 +328,6 @@ function Vessels() {
     handleDocMenuClose();
   };
 
-  // ============ DOCUMENT MENU FUNCTIONS ============
   const handleDocMenuOpen = (event, vessel, doc, docIndex) => {
     setDocMenuAnchor(event.currentTarget);
     setDocMenuData({ vessel, doc, docIndex });
@@ -561,6 +612,7 @@ function Vessels() {
                     borderBottom: index < vesselList.length - 1 ? '1px solid #F3F4F6' : 'none',
                   }}
                 >
+                  {/* ============ VESSEL NAME WITH HOVER POPOVER ============ */}
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar 
@@ -574,16 +626,40 @@ function Vessels() {
                       >
                         <VesselIcon sx={{ fontSize: 16, color: 'white' }} />
                       </Avatar>
-                      <Typography sx={{ 
-                        fontWeight: 500, 
-                        color: '#111827',
-                        fontFamily: '"Inter", sans-serif',
-                        fontSize: '0.875rem',
-                      }}>
+                      <Typography 
+                        sx={{ 
+                          fontWeight: 500, 
+                          color: '#111827',
+                          fontFamily: '"Inter", sans-serif',
+                          fontSize: '0.875rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textDecorationColor: 'transparent',
+                          '&:hover': {
+                            textDecorationColor: '#1976d2',
+                            color: '#1976d2',
+                          }
+                        }}
+                        onMouseEnter={(e) => handlePopoverOpen(e, vessel)}
+                        onMouseLeave={handlePopoverClose}
+                      >
                         {vessel.name}
                       </Typography>
+                      {/* Info Icon indicator */}
+                      {(vessel.currentContract || vessel.location || vessel.charterer) && (
+                        <InfoIcon 
+                          sx={{ 
+                            fontSize: 14, 
+                            color: '#94a3b8',
+                            cursor: 'help',
+                          }}
+                          onMouseEnter={(e) => handlePopoverOpen(e, vessel)}
+                          onMouseLeave={handlePopoverClose}
+                        />
+                      )}
                     </Box>
                   </TableCell>
+                  
                   <TableCell sx={{ 
                     color: '#6B7280', 
                     fontSize: '0.875rem',
@@ -680,7 +756,7 @@ function Vessels() {
                     />
                   </TableCell>
                   
-                  {/* ============ DOCS COLUMN WITH LINK BUTTONS ============ */}
+                  {/* Docs Column with Link Buttons */}
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                       {vessel.documents?.map((doc, docIndex) => (
@@ -1095,6 +1171,273 @@ function Vessels() {
         'maintenance',
         <PendingIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
       )}
+
+      {/* ============ VESSEL INFO POPOVER ============ */}
+      <Popover
+        id="vessel-info-popover"
+        open={isPopoverOpen}
+        anchorEl={popoverAnchor}
+        anchorOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        onClose={handlePopoverClose}
+        disableRestoreFocus
+        PaperProps={{
+          onMouseEnter: () => {
+            // Keep popover open when mouse enters
+          },
+          onMouseLeave: handlePopoverClose,
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
+            maxWidth: 320,
+            minWidth: 280,
+            p: 0,
+            overflow: 'hidden',
+            border: '1px solid #E5E7EB',
+          }
+        }}
+      >
+        {popoverVessel && (
+          <Box>
+            {/* Header */}
+            <Box sx={{ 
+              p: 2, 
+              bgcolor: '#F8FAFC', 
+              borderBottom: '1px solid #E5E7EB',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+            }}>
+              <Avatar 
+                sx={{ 
+                  width: 36, 
+                  height: 36, 
+                  bgcolor: '#1976d2',
+                  borderRadius: 1.5,
+                }}
+              >
+                <VesselIcon sx={{ fontSize: 18, color: 'white' }} />
+              </Avatar>
+              <Box>
+                <Typography 
+                  sx={{ 
+                    fontWeight: 600, 
+                    color: '#111827',
+                    fontSize: '0.95rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  {popoverVessel.name}
+                </Typography>
+                <Typography 
+                  sx={{ 
+                    color: '#6B7280',
+                    fontSize: '0.7rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  IMO: {popoverVessel.imoNumber || 'N/A'} • {popoverVessel.indType || 'N/A'}
+                </Typography>
+              </Box>
+              <IconButton 
+                size="small" 
+                onClick={handlePopoverClose}
+                sx={{ 
+                  ml: 'auto',
+                  color: '#6B7280',
+                }}
+              >
+                <CloseIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Box>
+
+            {/* Content */}
+            <Box sx={{ p: 2 }}>
+              {/* Current Contract */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+                <BusinessIcon sx={{ fontSize: 18, color: '#1976d2', mt: 0.2 }} />
+                <Box>
+                  <Typography 
+                    sx={{ 
+                      fontWeight: 600, 
+                      color: '#6B7280',
+                      fontSize: '0.65rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    Current Contract
+                  </Typography>
+                  <Typography 
+                    sx={{ 
+                      color: '#111827',
+                      fontSize: '0.85rem',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {popoverVessel.currentContract || 'No active contract'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Location */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+                <LocationIcon sx={{ fontSize: 18, color: '#22c55e', mt: 0.2 }} />
+                <Box>
+                  <Typography 
+                    sx={{ 
+                      fontWeight: 600, 
+                      color: '#6B7280',
+                      fontSize: '0.65rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    Current Location
+                  </Typography>
+                  <Typography 
+                    sx={{ 
+                      color: '#111827',
+                      fontSize: '0.85rem',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {popoverVessel.location || 'Not specified'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Charterer */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+                <AnchorIcon sx={{ fontSize: 18, color: '#7c3aed', mt: 0.2 }} />
+                <Box>
+                  <Typography 
+                    sx={{ 
+                      fontWeight: 600, 
+                      color: '#6B7280',
+                      fontSize: '0.65rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    Charterer
+                  </Typography>
+                  <Typography 
+                    sx={{ 
+                      color: '#111827',
+                      fontSize: '0.85rem',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {popoverVessel.charterer || 'Not specified'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Next Dry Dock */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 1.5 }}>
+                <CalendarIcon sx={{ fontSize: 18, color: '#f59e0b', mt: 0.2 }} />
+                <Box>
+                  <Typography 
+                    sx={{ 
+                      fontWeight: 600, 
+                      color: '#6B7280',
+                      fontSize: '0.65rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    Next Dry Dock
+                  </Typography>
+                  <Typography 
+                    sx={{ 
+                      color: '#111827',
+                      fontSize: '0.85rem',
+                      fontFamily: '"Inter", sans-serif',
+                    }}
+                  >
+                    {popoverVessel.nextDryDock || 'Not scheduled'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Additional Info */}
+              {popoverVessel.additionalInfo && (
+                <Box sx={{ 
+                  mt: 1,
+                  p: 1.5, 
+                  bgcolor: '#F8FAFC', 
+                  borderRadius: 1.5,
+                  border: '1px solid #E5E7EB',
+                }}>
+                  <Typography 
+                    sx={{ 
+                      color: '#6B7280',
+                      fontSize: '0.7rem',
+                      fontFamily: '"Inter", sans-serif',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {popoverVessel.additionalInfo}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Quick Status */}
+              <Box sx={{ 
+                mt: 1.5, 
+                pt: 1.5,
+                borderTop: '1px solid #E5E7EB',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}>
+                <Typography 
+                  sx={{ 
+                    color: '#6B7280',
+                    fontSize: '0.6rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  Status: 
+                  <Chip 
+                    label={popoverVessel.status || 'Available'}
+                    size="small"
+                    sx={{ 
+                      ml: 0.5,
+                      fontSize: '0.6rem',
+                      height: 18,
+                      fontFamily: '"Inter", sans-serif',
+                      bgcolor: getStatusStyles(popoverVessel.status).bgcolor,
+                      color: getStatusStyles(popoverVessel.status).color,
+                      border: `1px solid ${getStatusStyles(popoverVessel.status).borderColor}`,
+                    }}
+                  />
+                </Typography>
+                <Typography 
+                  sx={{ 
+                    color: '#94a3b8',
+                    fontSize: '0.55rem',
+                    fontFamily: '"Inter", sans-serif',
+                  }}
+                >
+                  GRT: {popoverVessel.grt || '-'} • Seats: {popoverVessel.totalSeat || '-'}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </Popover>
 
       {/* ============ DOCUMENT ACTION MENU ============ */}
       <Menu
@@ -1898,6 +2241,239 @@ function Vessels() {
                 variant="outlined"
                 placeholder="e.g., 60"
                 size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            {/* ============ NEW: VESSEL INFO FIELDS ============ */}
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Current Contract
+              </Typography>
+              <TextField
+                fullWidth
+                name="currentContract"
+                value={formData.currentContract}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="e.g., Petronas Charter 2024-2026"
+                size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Current Location
+              </Typography>
+              <TextField
+                fullWidth
+                name="location"
+                value={formData.location}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="e.g., Offshore Sarawak"
+                size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Charterer
+              </Typography>
+              <TextField
+                fullWidth
+                name="charterer"
+                value={formData.charterer}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="e.g., Petronas"
+                size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Next Dry Dock
+              </Typography>
+              <TextField
+                fullWidth
+                name="nextDryDock"
+                value={formData.nextDryDock}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="e.g., June 2025"
+                size="small"
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    borderRadius: 2,
+                    bgcolor: '#F9FAFB',
+                    '& fieldset': { border: 'none' },
+                    '&:hover': { bgcolor: '#F3F4F6' },
+                    '&.Mui-focused': { 
+                      bgcolor: 'white',
+                      boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                      '& fieldset': { border: '1px solid #1976d2' },
+                    }
+                  },
+                  '& .MuiInputBase-input': {
+                    fontFamily: '"Inter", sans-serif',
+                    color: '#111827',
+                    fontSize: '0.875rem',
+                    py: 1.5,
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#6B7280', 
+                  display: 'block', 
+                  mb: 0.75,
+                  fontFamily: '"Inter", sans-serif',
+                  fontSize: '0.7rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Additional Info (Optional)
+              </Typography>
+              <TextField
+                fullWidth
+                name="additionalInfo"
+                value={formData.additionalInfo}
+                onChange={handleInputChange}
+                variant="outlined"
+                placeholder="Any additional notes about the vessel..."
+                size="small"
+                multiline
+                rows={2}
                 sx={{ 
                   '& .MuiOutlinedInput-root': { 
                     borderRadius: 2,

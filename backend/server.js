@@ -23,7 +23,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============ CREATE UPLOADS FOLDER (for backward compatibility) ============
+// ============ CREATE UPLOADS FOLDER ============
 const uploadDir = path.join(__dirname, 'uploads');
 const parentUploadDir = path.join(__dirname, '../uploads');
 
@@ -51,7 +51,7 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-// ============ MULTER SETUP (for file uploads - backward compatibility) ============
+// ============ MULTER SETUP ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dest = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
@@ -78,7 +78,7 @@ const upload = multer({
 
 // ============ SCHEMAS ============
 
-// ===== VESSEL SCHEMA =====
+// ===== VESSEL SCHEMA (UPDATED) =====
 const vesselSchema = new mongoose.Schema({
   name: { type: String, required: true },
   imoNumber: { type: String, default: '' },
@@ -94,11 +94,17 @@ const vesselSchema = new mongoose.Schema({
     enum: ['Active', 'Available', 'Sold', 'Under Maintenance'], 
     default: 'Available' 
   },
+  // NEW: Vessel Info Fields
+  currentContract: { type: String, default: '' },
+  location: { type: String, default: '' },
+  charterer: { type: String, default: '' },
+  nextDryDock: { type: String, default: '' },
+  additionalInfo: { type: String, default: '' },
   documents: [{
     name: String,
     filePath: String,
-    url: String,        // NEW: For link-based documents
-    isLink: { type: Boolean, default: false }, // NEW: Flag for link-based documents
+    url: String,
+    isLink: { type: Boolean, default: false },
     uploadDate: { type: Date, default: Date.now }
   }],
   createdAt: { type: Date, default: Date.now }
@@ -392,7 +398,24 @@ app.get('/api/vessels', async (req, res) => {
 
 app.post('/api/vessels', async (req, res) => {
   try {
-    const vessel = new Vessel(req.body);
+    const vessel = new Vessel({
+      name: req.body.name,
+      imoNumber: req.body.imoNumber || '',
+      indType: req.body.indType || '',
+      flag: req.body.flag || '',
+      year: req.body.year || 0,
+      grt: req.body.grt || 0,
+      dwt: req.body.dwt || 0,
+      speed: req.body.speed || '',
+      totalSeat: req.body.totalSeat || 0,
+      status: req.body.status || 'Available',
+      // NEW: Vessel info fields
+      currentContract: req.body.currentContract || '',
+      location: req.body.location || '',
+      charterer: req.body.charterer || '',
+      nextDryDock: req.body.nextDryDock || '',
+      additionalInfo: req.body.additionalInfo || '',
+    });
     await vessel.save();
     res.status(201).json(vessel);
   } catch (error) {
@@ -407,15 +430,21 @@ app.put('/api/vessels/:id', async (req, res) => {
       req.params.id,
       {
         name: req.body.name,
-        imoNumber: req.body.imoNumber,
-        indType: req.body.indType,
-        flag: req.body.flag,
-        year: req.body.year,
-        grt: req.body.grt,
-        dwt: req.body.dwt,
-        speed: req.body.speed,
-        totalSeat: req.body.totalSeat,
-        status: req.body.status || 'Available'
+        imoNumber: req.body.imoNumber || '',
+        indType: req.body.indType || '',
+        flag: req.body.flag || '',
+        year: req.body.year || 0,
+        grt: req.body.grt || 0,
+        dwt: req.body.dwt || 0,
+        speed: req.body.speed || '',
+        totalSeat: req.body.totalSeat || 0,
+        status: req.body.status || 'Available',
+        // NEW: Vessel info fields
+        currentContract: req.body.currentContract || '',
+        location: req.body.location || '',
+        charterer: req.body.charterer || '',
+        nextDryDock: req.body.nextDryDock || '',
+        additionalInfo: req.body.additionalInfo || '',
       },
       { new: true, runValidators: true }
     );
@@ -440,7 +469,7 @@ app.delete('/api/vessels/:id', async (req, res) => {
 
 // ============ VESSEL DOCUMENT ROUTES ============
 
-// ===== ADD LINK DOCUMENT (NEW) =====
+// ===== ADD LINK DOCUMENT =====
 app.post('/api/vessels/:id/documents', async (req, res) => {
   try {
     const vessel = await Vessel.findById(req.params.id);
