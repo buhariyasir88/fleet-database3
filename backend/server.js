@@ -23,12 +23,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============ CREATE UPLOADS FOLDER (Render compatible) ============
-// Try multiple possible locations
+// ============ CREATE UPLOADS FOLDER (for backward compatibility) ============
 const uploadDir = path.join(__dirname, 'uploads');
 const parentUploadDir = path.join(__dirname, '../uploads');
 
-// Create both directories if they don't exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
   console.log(`📁 Created uploads directory: ${uploadDir}`);
@@ -38,12 +36,10 @@ if (!fs.existsSync(parentUploadDir)) {
   console.log(`📁 Created uploads directory: ${parentUploadDir}`);
 }
 
-// ============ SERVE STATIC FILES (FIXED) ============
-// Serve from BOTH locations to be safe
+// ============ SERVE STATIC FILES ============
 app.use('/uploads', express.static(uploadDir));
 app.use('/uploads', express.static(parentUploadDir));
 console.log(`📁 Serving uploads from: ${uploadDir}`);
-console.log(`📁 Also serving uploads from: ${parentUploadDir}`);
 
 // ============ MONGODB CONNECTION ============
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/fleet_database';
@@ -55,10 +51,9 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-// ============ MULTER SETUP ============
+// ============ MULTER SETUP (for file uploads - backward compatibility) ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Use the uploadDir that exists
     const dest = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
     cb(null, dest);
   },
@@ -102,6 +97,8 @@ const vesselSchema = new mongoose.Schema({
   documents: [{
     name: String,
     filePath: String,
+    url: String,        // NEW: For link-based documents
+    isLink: { type: Boolean, default: false }, // NEW: Flag for link-based documents
     uploadDate: { type: Date, default: Date.now }
   }],
   createdAt: { type: Date, default: Date.now }
@@ -441,8 +438,52 @@ app.delete('/api/vessels/:id', async (req, res) => {
   }
 });
 
-// ============ VESSEL DOCUMENT UPLOAD ROUTE ============
-app.post('/api/vessels/:id/documents', upload.single('document'), async (req, res) => {
+// ============ VESSEL DOCUMENT ROUTES ============
+
+// ===== ADD LINK DOCUMENT (NEW) =====
+app.post('/api/vessels/:id/documents', async (req, res) => {
+  try {
+    const vessel = await Vessel.findById(req.params.id);
+    if (!vessel) {
+      return res.status(404).json({ error: 'Vessel not found' });
+    }
+
+    const { name, url, isLink } = req.body;
+    
+    if (!name || !url) {
+      return res.status(400).json({ error: 'Name and URL are required' });
+    }
+
+    // Validate URL
+    try {
+      new URL(url);
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Add document link to vessel
+    vessel.documents.push({
+      name: name,
+      url: url,
+      isLink: isLink || true,
+      uploadDate: new Date()
+    });
+
+    await vessel.save();
+    
+    const uploadedDoc = vessel.documents[vessel.documents.length - 1];
+    res.json({ 
+      message: 'Document link added successfully',
+      document: uploadedDoc
+    });
+  } catch (error) {
+    console.error('Error adding document link:', error);
+    res.status(500).json({ error: 'Error adding document link' });
+  }
+});
+
+// ===== UPLOAD FILE (Backward compatibility) =====
+app.post('/api/vessels/:id/upload-document', upload.single('document'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -453,13 +494,10 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
       return res.status(404).json({ error: 'Vessel not found' });
     }
 
-    // Determine the correct file path
-    const filePath = `/uploads/${req.file.filename}`;
-
-    // Add document to vessel
     vessel.documents.push({
       name: req.body.name || 'Document',
-      filePath: filePath,
+      filePath: `/uploads/${req.file.filename}`,
+      isLink: false,
       uploadDate: new Date()
     });
 
@@ -473,6 +511,29 @@ app.post('/api/vessels/:id/documents', upload.single('document'), async (req, re
   } catch (error) {
     console.error('Error uploading document:', error);
     res.status(500).json({ error: 'Error uploading document' });
+  }
+});
+
+// ===== DELETE DOCUMENT =====
+app.delete('/api/vessels/:id/documents/:docIndex', async (req, res) => {
+  try {
+    const vessel = await Vessel.findById(req.params.id);
+    if (!vessel) {
+      return res.status(404).json({ error: 'Vessel not found' });
+    }
+
+    const docIndex = parseInt(req.params.docIndex);
+    if (docIndex < 0 || docIndex >= vessel.documents.length) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    vessel.documents.splice(docIndex, 1);
+    await vessel.save();
+
+    res.json({ message: 'Document removed successfully' });
+  } catch (error) {
+    console.error('Error removing document:', error);
+    res.status(500).json({ error: 'Error removing document' });
   }
 });
 
@@ -918,6 +979,5 @@ app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`📍 API URL: http://localhost:${PORT}/api/dashboard`);
   console.log(`📁 Uploads directory: ${uploadDir}`);
-  console.log(`📁 Also serving from: ${parentUploadDir}`);
   console.log(`📁 Serving uploads at: http://localhost:${PORT}/uploads/`);
 });
