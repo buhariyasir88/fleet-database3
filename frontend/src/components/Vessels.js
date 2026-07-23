@@ -48,6 +48,8 @@ import {
   MoreVert as MoreVertIcon,
   Download as DownloadIcon,
   RemoveCircle as RemoveCircleIcon,
+  Link as LinkIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5005/api';
@@ -69,16 +71,18 @@ function Vessels() {
     status: 'Active',
   });
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [uploadDialog, setUploadDialog] = useState(false);
+  // ============ NEW: Link Dialog state ============
+  const [linkDialog, setLinkDialog] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [docType, setDocType] = useState('Vessel Spec');
+  const [linkData, setLinkData] = useState({
+    name: 'Vessel Spec',
+    url: '',
+  });
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [savingLink, setSavingLink] = useState(false);
   const [statusDialog, setStatusDialog] = useState(false);
   const [statusVessel, setStatusVessel] = useState(null);
   const [newStatus, setNewStatus] = useState('Active');
-  // ============ NEW: Document menu state ============
   const [docMenuAnchor, setDocMenuAnchor] = useState(null);
   const [docMenuData, setDocMenuData] = useState(null);
 
@@ -187,87 +191,82 @@ function Vessels() {
     }
   };
 
-  const handleUploadDialog = (vessel) => {
+  // ============ LINK DIALOG FUNCTIONS ============
+  const handleLinkDialogOpen = (vessel) => {
     setSelectedVessel(vessel);
-    setSelectedFile(null);
-    setDocType('Vessel Spec');
-    setUploadDialog(true);
+    setLinkData({
+      name: 'Vessel Spec',
+      url: '',
+    });
+    setLinkDialog(true);
   };
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-    }
+  const handleLinkDialogClose = () => {
+    setLinkDialog(false);
+    setSelectedVessel(null);
+    setLinkData({
+      name: 'Vessel Spec',
+      url: '',
+    });
   };
 
-  // ============ UPLOAD FUNCTION ============
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      showSnackbar('Please select a file', 'error');
+  const handleLinkInputChange = (e) => {
+    setLinkData({ ...linkData, [e.target.name]: e.target.value });
+  };
+
+  // ============ ADD LINK FUNCTION ============
+  const handleAddLink = async () => {
+    if (!linkData.url.trim()) {
+      showSnackbar('Please enter a valid URL', 'error');
       return;
     }
 
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('document', selectedFile);
-    formData.append('name', docType);
+    // Validate URL
+    try {
+      new URL(linkData.url);
+    } catch (e) {
+      showSnackbar('Please enter a valid URL (e.g., https://... )', 'error');
+      return;
+    }
 
+    setSavingLink(true);
     try {
       const response = await axios.post(
         `${API_URL}/vessels/${selectedVessel._id}/documents`,
-        formData,
         {
-          headers: { 
-            'Content-Type': 'multipart/form-data' 
-          }
+          name: linkData.name,
+          url: linkData.url,
+          isLink: true,
         }
       );
-      showSnackbar('Document uploaded successfully! 🎉');
-      setUploadDialog(false);
+      showSnackbar('Document link added successfully! 🔗');
+      handleLinkDialogClose();
       fetchVessels();
     } catch (error) {
-      console.error('Error uploading document:', error);
-      showSnackbar(error.response?.data?.error || 'Error uploading document', 'error');
+      console.error('Error adding link:', error);
+      showSnackbar(error.response?.data?.error || 'Error adding link', 'error');
     } finally {
-      setUploading(false);
+      setSavingLink(false);
     }
   };
 
-  // ============ DOWNLOAD FUNCTION ============
-  const handleDownload = (doc) => {
-    if (!doc || !doc.filePath) {
-      showSnackbar('Document not found', 'error');
+  // ============ OPEN LINK FUNCTION ============
+  const handleOpenLink = (doc) => {
+    if (!doc || !doc.url) {
+      showSnackbar('No link available', 'error');
       return;
     }
-    
-    // Extract just the filename from the path
-    let fileName = doc.filePath;
-    if (fileName.includes('/')) {
-      fileName = fileName.split('/').pop();
-    }
-    if (fileName.includes('\\')) {
-      fileName = fileName.split('\\').pop();
-    }
-    
-    // Build the URL properly
-    const baseUrl = API_URL.replace('/api', '');
-    const downloadUrl = `${baseUrl}/uploads/${encodeURIComponent(fileName)}`;
-    
-    console.log('📥 Downloading from:', downloadUrl);
-    console.log('📄 File name:', fileName);
-    
-    // Open in new tab
-    window.open(downloadUrl, '_blank');
+    window.open(doc.url, '_blank');
   };
 
-  // ============ NEW: REMOVE DOCUMENT FUNCTION ============
+  // ============ REMOVE DOCUMENT FUNCTION ============
   const handleRemoveDocument = async (vesselId, docIndex) => {
     if (!window.confirm('Are you sure you want to remove this document?')) {
       return;
     }
 
     try {
-      const response = await axios.delete(`${API_URL}/vessels/${vesselId}/documents/${docIndex}`);
+      await axios.delete(`${API_URL}/vessels/${vesselId}/documents/${docIndex}`);
       showSnackbar('Document removed successfully! 🗑️');
       fetchVessels();
     } catch (error) {
@@ -277,7 +276,7 @@ function Vessels() {
     handleDocMenuClose();
   };
 
-  // ============ NEW: DOCUMENT MENU FUNCTIONS ============
+  // ============ DOCUMENT MENU FUNCTIONS ============
   const handleDocMenuOpen = (event, vessel, doc, docIndex) => {
     setDocMenuAnchor(event.currentTarget);
     setDocMenuData({ vessel, doc, docIndex });
@@ -286,11 +285,6 @@ function Vessels() {
   const handleDocMenuClose = () => {
     setDocMenuAnchor(null);
     setDocMenuData(null);
-  };
-
-  // ============ NEW: GET VESSEL BY ID ============
-  const getVesselById = (vesselId) => {
-    return vessels.find(v => v._id === vesselId);
   };
 
   const handleOpenStatusDialog = (vessel) => {
@@ -686,26 +680,36 @@ function Vessels() {
                     />
                   </TableCell>
                   
-                  {/* ============ DOCS COLUMN WITH MENU ============ */}
+                  {/* ============ DOCS COLUMN WITH LINK BUTTONS ============ */}
                   <TableCell sx={{ py: 3, border: 'none' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                       {vessel.documents?.map((doc, docIndex) => (
                         <Box key={docIndex} sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                          <Chip
-                            label={doc.name}
+                          <Button
                             size="small"
-                            onClick={() => handleDownload(doc)}
-                            sx={{ 
+                            variant="outlined"
+                            startIcon={<LinkIcon />}
+                            endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => handleOpenLink(doc)}
+                            sx={{
                               m: 0.2,
-                              cursor: 'pointer',
-                              bgcolor: '#EEF2FF',
-                              color: '#4338CA',
                               fontSize: '0.6rem',
-                              height: 20,
+                              textTransform: 'none',
                               fontFamily: '"Inter", sans-serif',
-                              '&:hover': { bgcolor: '#C7D2FE' }
+                              borderRadius: 1.5,
+                              borderColor: '#1976d2',
+                              color: '#1976d2',
+                              px: 1.5,
+                              py: 0.5,
+                              minHeight: 24,
+                              '&:hover': {
+                                bgcolor: 'rgba(25,118,210,0.08)',
+                                borderColor: '#1976d2',
+                              }
                             }}
-                          />
+                          >
+                            {doc.name}
+                          </Button>
                           <IconButton
                             size="small"
                             onClick={(e) => handleDocMenuOpen(e, vessel, doc, docIndex)}
@@ -720,16 +724,16 @@ function Vessels() {
                           </IconButton>
                         </Box>
                       ))}
-                      <Tooltip title="Upload Document">
+                      <Tooltip title="Add Document Link">
                         <IconButton 
                           size="small" 
-                          onClick={() => handleUploadDialog(vessel)}
+                          onClick={() => handleLinkDialogOpen(vessel)}
                           sx={{ 
                             color: '#6B7280',
                             '&:hover': { color: '#1976d2' }
                           }}
                         >
-                          <UploadIcon sx={{ fontSize: 16 }} />
+                          <LinkIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
                     </Box>
@@ -892,7 +896,7 @@ function Vessels() {
                   borderRadius: 2,
                 }}
               >
-                <UploadIcon sx={{ fontSize: 22 }} />
+                <LinkIcon sx={{ fontSize: 22 }} />
               </Avatar>
               <Box>
                 <Typography
@@ -1109,7 +1113,7 @@ function Vessels() {
         <MenuItem 
           onClick={() => {
             if (docMenuData) {
-              handleDownload(docMenuData.doc);
+              handleOpenLink(docMenuData.doc);
             }
             handleDocMenuClose();
           }}
@@ -1120,9 +1124,9 @@ function Vessels() {
           }}
         >
           <ListItemIcon>
-            <DownloadIcon fontSize="small" color="primary" />
+            <OpenInNewIcon fontSize="small" color="primary" />
           </ListItemIcon>
-          <ListItemText primary="Download" />
+          <ListItemText primary="Open Link" />
         </MenuItem>
         <MenuItem 
           onClick={() => {
@@ -1144,11 +1148,11 @@ function Vessels() {
         </MenuItem>
       </Menu>
 
-      {/* ============ UPLOAD DIALOG ============ */}
+      {/* ============ ADD LINK DIALOG ============ */}
       <Dialog 
-        open={uploadDialog} 
-        onClose={() => setUploadDialog(false)} 
-        maxWidth="xs" 
+        open={linkDialog} 
+        onClose={handleLinkDialogClose} 
+        maxWidth="sm" 
         fullWidth
         PaperProps={{
           sx: {
@@ -1167,23 +1171,24 @@ function Vessels() {
           alignItems: 'center'
         }}>
           <Typography variant="h6" sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>
-            Upload Document
+            Add Document Link
           </Typography>
-          <IconButton onClick={() => setUploadDialog(false)} size="small">
+          <IconButton onClick={handleLinkDialogClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>
         
         <DialogContent sx={{ p: 3 }}>
           <Typography variant="body2" sx={{ mb: 2, color: '#6B7280', fontFamily: '"Inter", sans-serif' }}>
-            Uploading for: <strong>{selectedVessel?.name}</strong>
+            Add a link for: <strong>{selectedVessel?.name}</strong>
           </Typography>
           
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel sx={{ fontFamily: '"Inter", sans-serif' }}>Document Type</InputLabel>
             <Select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
+              name="name"
+              value={linkData.name}
+              onChange={handleLinkInputChange}
               label="Document Type"
               sx={{ 
                 borderRadius: 2,
@@ -1204,39 +1209,40 @@ function Vessels() {
             </Select>
           </FormControl>
           
-          <Box 
+          <TextField
+            fullWidth
+            name="url"
+            label="Document URL (OneDrive Link)"
+            value={linkData.url}
+            onChange={handleLinkInputChange}
+            variant="outlined"
+            placeholder="https://onedrive.live.com/..."
+            size="small"
             sx={{ 
-              border: '2px dashed #E5E7EB', 
-              borderRadius: 2, 
-              p: 3, 
-              textAlign: 'center',
-              bgcolor: '#F9FAFB',
-              '&:hover': { borderColor: '#1976d2', bgcolor: '#F0F7FF' }
-            }}
-          >
-            <input
-              type="file"
-              onChange={handleFileChange}
-              style={{ 
-                width: '100%', 
-                padding: '10px 0',
-                cursor: 'pointer',
+              '& .MuiOutlinedInput-root': { 
+                borderRadius: 2,
+                bgcolor: '#F9FAFB',
+                '& fieldset': { border: 'none' },
+                '&:hover': { bgcolor: '#F3F4F6' },
+                '&.Mui-focused': { 
+                  bgcolor: 'white',
+                  boxShadow: '0 0 0 3px rgba(25,118,210,0.15)',
+                  '& fieldset': { border: '1px solid #1976d2' },
+                }
+              },
+              '& .MuiInputBase-input': {
                 fontFamily: '"Inter", sans-serif',
-              }}
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-            />
-            <Typography variant="caption" sx={{ color: '#6B7280', display: 'block', mt: 1, fontFamily: '"Inter", sans-serif' }}>
-              Supported: PDF, DOC, DOCX, JPG, PNG (Max 10MB)
-            </Typography>
-          </Box>
+                color: '#111827',
+                fontSize: '0.875rem',
+                py: 1.5,
+              },
+            }}
+          />
           
-          {selectedFile && (
-            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#F0FDF4', borderRadius: 2 }}>
-              <Typography variant="body2" sx={{ color: '#15803d', fontFamily: '"Inter", sans-serif' }}>
-                ✅ {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-              </Typography>
-            </Box>
-          )}
+          <Typography variant="caption" sx={{ color: '#6B7280', display: 'block', mt: 1.5, fontFamily: '"Inter", sans-serif' }}>
+            <LinkIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} /> 
+            Paste the OneDrive sharing link. The document will open when clicked.
+          </Typography>
         </DialogContent>
         
         <DialogActions sx={{ 
@@ -1247,7 +1253,7 @@ function Vessels() {
           borderTop: '1px solid #E5E7EB',
         }}>
           <Button 
-            onClick={() => setUploadDialog(false)} 
+            onClick={handleLinkDialogClose} 
             variant="outlined"
             sx={{ 
               borderRadius: 2,
@@ -1261,9 +1267,9 @@ function Vessels() {
             Cancel
           </Button>
           <Button 
-            onClick={handleUpload} 
+            onClick={handleAddLink} 
             variant="contained"
-            disabled={!selectedFile || uploading}
+            disabled={!linkData.url.trim() || savingLink}
             sx={{ 
               borderRadius: 2,
               textTransform: 'none',
@@ -1279,7 +1285,7 @@ function Vessels() {
               }
             }}
           >
-            {uploading ? 'Uploading...' : 'Upload'}
+            {savingLink ? 'Adding...' : 'Add Link'}
           </Button>
         </DialogActions>
       </Dialog>
