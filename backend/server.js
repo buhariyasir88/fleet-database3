@@ -23,7 +23,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ============ CREATE UPLOADS FOLDER (for backward compatibility) ============
+// ============ CREATE UPLOADS FOLDER ============
 const uploadDir = path.join(__dirname, 'uploads');
 const parentUploadDir = path.join(__dirname, '../uploads');
 
@@ -51,7 +51,7 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-// ============ MULTER SETUP (for file uploads - backward compatibility) ============
+// ============ MULTER SETUP ============
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dest = fs.existsSync(uploadDir) ? uploadDir : parentUploadDir;
@@ -94,11 +94,16 @@ const vesselSchema = new mongoose.Schema({
     enum: ['Active', 'Available', 'Sold', 'Under Maintenance'], 
     default: 'Available' 
   },
+  currentContract: { type: String, default: '' },
+  location: { type: String, default: '' },
+  charterer: { type: String, default: '' },
+  nextDryDock: { type: String, default: '' },
+  additionalInfo: { type: String, default: '' },
   documents: [{
     name: String,
     filePath: String,
-    url: String,        // NEW: For link-based documents
-    isLink: { type: Boolean, default: false }, // NEW: Flag for link-based documents
+    url: String,
+    isLink: { type: Boolean, default: false },
     uploadDate: { type: Date, default: Date.now }
   }],
   createdAt: { type: Date, default: Date.now }
@@ -248,6 +253,50 @@ const budgetSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// ===== DOCUMENT SCHEMA (NEW) =====
+const documentSchema = new mongoose.Schema({
+  title: { 
+    type: String, 
+    required: true 
+  },
+  folder: { 
+    type: String, 
+    required: true,
+    enum: [
+      'Contract Documents',
+      'Tender Documents',
+      'Vessel Documents',
+      'Sale/Purchase Documents',
+      'Project Documents',
+      'Corporate Documents',
+      'Financial Documents',
+      'Legal Documents',
+      'General Documents',
+      'Other Documents'
+    ]
+  },
+  onedriveLink: { 
+    type: String, 
+    required: true 
+  },
+  description: { 
+    type: String, 
+    default: '' 
+  },
+  tags: { 
+    type: [String], 
+    default: [] 
+  },
+  addedBy: { 
+    type: String, 
+    default: 'Admin' 
+  },
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
+  }
+});
+
 // ============ MODELS ============
 const Vessel = mongoose.model('Vessel', vesselSchema);
 const Client = mongoose.model('Client', clientSchema);
@@ -256,6 +305,7 @@ const Tender = mongoose.model('Tender', tenderSchema);
 const Invoice = mongoose.model('Invoice', invoiceSchema);
 const Utilization = mongoose.model('Utilization', utilizationSchema);
 const Budget = mongoose.model('Budget', budgetSchema);
+const Document = mongoose.model('Document', documentSchema); // NEW
 
 // ============ DEBUG ROUTE - List uploads ============
 app.get('/api/uploads', (req, res) => {
@@ -288,6 +338,7 @@ app.get('/', (req, res) => {
       utilizations: '/api/utilizations',
       budgets: '/api/budgets',
       dashboard: '/api/dashboard',
+      documents: '/api/documents',
       uploads: '/api/uploads'
     }
   });
@@ -392,7 +443,23 @@ app.get('/api/vessels', async (req, res) => {
 
 app.post('/api/vessels', async (req, res) => {
   try {
-    const vessel = new Vessel(req.body);
+    const vessel = new Vessel({
+      name: req.body.name,
+      imoNumber: req.body.imoNumber || '',
+      indType: req.body.indType || '',
+      flag: req.body.flag || '',
+      year: req.body.year || 0,
+      grt: req.body.grt || 0,
+      dwt: req.body.dwt || 0,
+      speed: req.body.speed || '',
+      totalSeat: req.body.totalSeat || 0,
+      status: req.body.status || 'Available',
+      currentContract: req.body.currentContract || '',
+      location: req.body.location || '',
+      charterer: req.body.charterer || '',
+      nextDryDock: req.body.nextDryDock || '',
+      additionalInfo: req.body.additionalInfo || '',
+    });
     await vessel.save();
     res.status(201).json(vessel);
   } catch (error) {
@@ -407,15 +474,20 @@ app.put('/api/vessels/:id', async (req, res) => {
       req.params.id,
       {
         name: req.body.name,
-        imoNumber: req.body.imoNumber,
-        indType: req.body.indType,
-        flag: req.body.flag,
-        year: req.body.year,
-        grt: req.body.grt,
-        dwt: req.body.dwt,
-        speed: req.body.speed,
-        totalSeat: req.body.totalSeat,
-        status: req.body.status || 'Available'
+        imoNumber: req.body.imoNumber || '',
+        indType: req.body.indType || '',
+        flag: req.body.flag || '',
+        year: req.body.year || 0,
+        grt: req.body.grt || 0,
+        dwt: req.body.dwt || 0,
+        speed: req.body.speed || '',
+        totalSeat: req.body.totalSeat || 0,
+        status: req.body.status || 'Available',
+        currentContract: req.body.currentContract || '',
+        location: req.body.location || '',
+        charterer: req.body.charterer || '',
+        nextDryDock: req.body.nextDryDock || '',
+        additionalInfo: req.body.additionalInfo || '',
       },
       { new: true, runValidators: true }
     );
@@ -440,7 +512,7 @@ app.delete('/api/vessels/:id', async (req, res) => {
 
 // ============ VESSEL DOCUMENT ROUTES ============
 
-// ===== ADD LINK DOCUMENT (NEW) =====
+// ADD LINK DOCUMENT
 app.post('/api/vessels/:id/documents', async (req, res) => {
   try {
     const vessel = await Vessel.findById(req.params.id);
@@ -454,14 +526,12 @@ app.post('/api/vessels/:id/documents', async (req, res) => {
       return res.status(400).json({ error: 'Name and URL are required' });
     }
 
-    // Validate URL
     try {
       new URL(url);
     } catch (e) {
       return res.status(400).json({ error: 'Invalid URL format' });
     }
 
-    // Add document link to vessel
     vessel.documents.push({
       name: name,
       url: url,
@@ -482,7 +552,7 @@ app.post('/api/vessels/:id/documents', async (req, res) => {
   }
 });
 
-// ===== UPLOAD FILE (Backward compatibility) =====
+// UPLOAD FILE
 app.post('/api/vessels/:id/upload-document', upload.single('document'), async (req, res) => {
   try {
     if (!req.file) {
@@ -514,7 +584,7 @@ app.post('/api/vessels/:id/upload-document', upload.single('document'), async (r
   }
 });
 
-// ===== DELETE DOCUMENT =====
+// DELETE DOCUMENT
 app.delete('/api/vessels/:id/documents/:docIndex', async (req, res) => {
   try {
     const vessel = await Vessel.findById(req.params.id);
@@ -939,6 +1009,165 @@ app.delete('/api/budgets/:id', async (req, res) => {
   }
 });
 
+// ============ DOCUMENT ROUTES (NEW) ============
+
+// GET all documents
+app.get('/api/documents', async (req, res) => {
+  try {
+    const documents = await Document.find({}).sort({ createdAt: -1 });
+    res.json(documents);
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({ error: 'Error fetching documents' });
+  }
+});
+
+// GET documents by folder
+app.get('/api/documents/folder/:folder', async (req, res) => {
+  try {
+    const documents = await Document.find({ folder: req.params.folder }).sort({ createdAt: -1 });
+    res.json(documents);
+  } catch (error) {
+    console.error('Error fetching documents by folder:', error);
+    res.status(500).json({ error: 'Error fetching documents' });
+  }
+});
+
+// GET documents by tag
+app.get('/api/documents/tag/:tag', async (req, res) => {
+  try {
+    const documents = await Document.find({ tags: req.params.tag }).sort({ createdAt: -1 });
+    res.json(documents);
+  } catch (error) {
+    console.error('Error fetching documents by tag:', error);
+    res.status(500).json({ error: 'Error fetching documents' });
+  }
+});
+
+// GET all tags with counts
+app.get('/api/documents/tags/all', async (req, res) => {
+  try {
+    const documents = await Document.find({});
+    const tagCounts = {};
+    documents.forEach(doc => {
+      doc.tags.forEach(tag => {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      });
+    });
+    const sortedTags = Object.entries(tagCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag, count]) => ({ tag, count }));
+    res.json(sortedTags);
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({ error: 'Error fetching tags' });
+  }
+});
+
+// CREATE document
+app.post('/api/documents', async (req, res) => {
+  try {
+    console.log('📝 Creating document:', req.body);
+    
+    const document = new Document({
+      title: req.body.title,
+      folder: req.body.folder,
+      onedriveLink: req.body.onedriveLink,
+      description: req.body.description || '',
+      tags: req.body.tags || [],
+      addedBy: req.body.addedBy || 'Admin',
+    });
+    
+    await document.save();
+    console.log('✅ Document created:', document.title);
+    res.status(201).json(document);
+  } catch (error) {
+    console.error('Error creating document:', error);
+    res.status(500).json({ error: 'Error creating document' });
+  }
+});
+
+// UPDATE document
+app.put('/api/documents/:id', async (req, res) => {
+  try {
+    console.log('📝 Updating document:', req.body);
+    
+    const document = await Document.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: req.body.title,
+        folder: req.body.folder,
+        onedriveLink: req.body.onedriveLink,
+        description: req.body.description || '',
+        tags: req.body.tags || [],
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    console.log('✅ Document updated:', document.title);
+    res.json(document);
+  } catch (error) {
+    console.error('Error updating document:', error);
+    res.status(500).json({ error: 'Error updating document' });
+  }
+});
+
+// DELETE document
+app.delete('/api/documents/:id', async (req, res) => {
+  try {
+    const document = await Document.findByIdAndDelete(req.params.id);
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    console.log('✅ Document deleted:', document.title);
+    res.json({ message: 'Document deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: 'Error deleting document' });
+  }
+});
+
+// GET documents stats (for dashboard)
+app.get('/api/documents/stats', async (req, res) => {
+  try {
+    const total = await Document.countDocuments({});
+    const folderStats = {};
+    const folders = [
+      'Contract Documents',
+      'Tender Documents',
+      'Vessel Documents',
+      'Sale/Purchase Documents',
+      'Project Documents',
+      'Corporate Documents',
+      'Financial Documents',
+      'Legal Documents',
+      'General Documents',
+      'Other Documents'
+    ];
+    
+    for (const folder of folders) {
+      folderStats[folder] = await Document.countDocuments({ folder });
+    }
+    
+    const recent = await Document.find({})
+      .sort({ createdAt: -1 })
+      .limit(5);
+    
+    res.json({
+      total,
+      folderStats,
+      recent
+    });
+  } catch (error) {
+    console.error('Error fetching document stats:', error);
+    res.status(500).json({ error: 'Error fetching document stats' });
+  }
+});
+
 // ============ GENERAL FILE UPLOAD ROUTE ============
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
@@ -980,4 +1209,5 @@ app.listen(PORT, () => {
   console.log(`📍 API URL: http://localhost:${PORT}/api/dashboard`);
   console.log(`📁 Uploads directory: ${uploadDir}`);
   console.log(`📁 Serving uploads at: http://localhost:${PORT}/uploads/`);
+  console.log(`📄 Document routes registered`);
 });

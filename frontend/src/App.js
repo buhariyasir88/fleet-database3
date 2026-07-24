@@ -11,6 +11,7 @@ import Tenders from './components/Tenders';
 import Invoices from './components/Invoices';
 import Utilization from './components/Utilization';
 import Reports from './components/Reports';
+import Documents from './components/Documents'; // ✅ NEW
 
 // MUI components
 import {
@@ -47,6 +48,7 @@ import {
   Receipt as InvoiceIcon,
   Speed as UtilizationIcon,
   Assessment as ReportsIcon,
+  Description as DocumentsIcon, // ✅ NEW
   AccountCircle,
   Logout as LogoutIcon,
   Visibility,
@@ -75,6 +77,7 @@ const menuItems = [
   { text: 'Invoices', icon: <InvoiceIcon />, path: '/invoices' },
   { text: 'Utilization', icon: <UtilizationIcon />, path: '/utilization' },
   { text: 'Reports', icon: <ReportsIcon />, path: '/reports' },
+  { text: 'Documents', icon: <DocumentsIcon />, path: '/documents' }, // ✅ NEW
 ];
 
 function App() {
@@ -287,7 +290,6 @@ function App() {
               display: { xs: 'none', sm: 'block' },
             }} />
             
-            {/* ===== LOGOUT BUTTON - FIXED ===== */}
             <Button
               variant="outlined"
               startIcon={<LogoutIcon />}
@@ -412,6 +414,7 @@ function App() {
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/utilization" element={<Utilization />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/documents" element={<Documents />} /> {/* ✅ NEW */}
           </Routes>
         </Container>
       </Box>
@@ -430,7 +433,7 @@ function App() {
   );
 }
 
-// ===== LOGIN COMPONENT WITH HIDDEN PASSWORD =====
+// ===== LOGIN COMPONENT =====
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -554,7 +557,6 @@ function Login({ onLogin }) {
             }}
           />
           
-          {/* ===== PASSWORD FIELD WITH HIDE/SHOW ===== */}
           <TextField
             fullWidth
             label="Password"
